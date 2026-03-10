@@ -1,0 +1,3 @@
+[submodule "hw/vendor/ceimm_upm_strela"]
+	path = hw/vendor/ceimm_upm_strela
+	url = git@gitlab.cei.upm.es:tapeouts/strela.git

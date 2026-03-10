@@ -180,18 +180,21 @@ module gr_heep_peripherals
 
     // Instantiate here the external peripherals
     % for a_slave in gr_heep["peripherals"]:
-        // % if (a_slave['name'] == "TestIp"):
-        //   // Test IP
-        //   test_ip test_ip_i (
-        //       .clk_i,
-        //       .rst_ni(rst_ni),
-        //       .reg_req_i(gr_heep_peripheral_req[gr_heep_pkg::TestIpPeriphIdx]),
-        //       .reg_rsp_o(gr_heep_peripheral_rsp[gr_heep_pkg::TestIpPeriphIdx]),
-        //       .read_req_i(gr_heep_slave_req_i[gr_heep_pkg::TestIpIdx]),
-        //       .read_resp_o(gr_heep_slave_resp_o[gr_heep_pkg::TestIpIdx]),
-        //       .gr_heep_peripheral_vec_int[0]
-        //   );
-        // % endif
+        % if (a_slave['name'] == "Strela"):
+          // STRELA
+          strela_wrapper strela_i (
+              .clk_i(clk_i),
+              .rst_ni(rst_ni),
+              .reg_req_i(gr_heep_peripheral_req[gr_heep_pkg::StrelaPeriphIdx]),
+              .reg_rsp_o(gr_heep_peripheral_rsp[gr_heep_pkg::StrelaPeriphIdx]),
+              .masters_req_o(gr_heep_master_req_o[gr_heep_pkg::ExtXbarNMasterRnd-1:0]),
+              .masters_resp_i(gr_heep_master_resp_i[gr_heep_pkg::ExtXbarNMasterRnd-1:0]),
+              .intr_o(gr_heep_peripheral_vec_int[0]),
+              .strela_clk_en_i(1'b1),
+              .strela_mem_clk_en_i('1),
+              .strela_mem_set_retentive_ni('1)
+          );
+        % endif
     % endfor
   % endif
 

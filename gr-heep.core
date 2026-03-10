@@ -13,6 +13,7 @@ filesets:
     - x-heep::packages
     - x-heep:ip:pad_control
     - openhwgroup.org:systems:core-v-mini-mcu
+    - ceiupm::strela
     files:
     - hw/gr-heep/gr_heep_pkg.sv
     - hw/gr-heep/gr_heep_xbar.sv
@@ -73,6 +74,10 @@ filesets:
     files:
     - hw/fpga_ext/xilinx_gr_heep_wrapper.sv
     file_type: systemVerilogSource
+  
+  ip-fpga:
+    files:
+    - hw/fpga_ext/scripts/generate_strela_sram.tcl:  { file_type: tclSource }
 
   # Scripts for hooks
   pre_build_remote_bitbang:
@@ -360,6 +365,7 @@ targets:
     description: Genesys2 Evaluation Board
     filesets_append:
     - rtl-fpga
+    - ip-fpga
     parameters:
     - SYNTHESIS=true
     - REMOVE_OBI_FIFO
