@@ -37,7 +37,7 @@ static memory_node_t ise_2_tab[ISE_2_MAX] = {
     {TR_CONF_ISE, (uintptr_t)&fc_0_kernel[42], 4u << 16 | CONFIG_SIZE},
     {FENCE_SE, 0, 0},
     {TR_CONF_ISE, (uintptr_t)&fc_1_0_kernel[42], 4u << 16 | CONFIG_SIZE},
-    {0, 0, 0} // 3 -> change with west mem params
+    {0, 0, 4u << 16} // 3 -> change with west mem params
     // completed in runtime with filter rows
 };
 
