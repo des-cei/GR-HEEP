@@ -34,6 +34,11 @@ static const int32_t filter_data[N * M] = {
     [0 ... N * M - 1] = 1
 };
 
+// Bias: all twos (expected output with bias = 136 + 2 = 138)
+static const int32_t bias_data[N] = {
+    [0 ... N - 1] = 2
+};
+
 static int32_t output_data[N];
 
 int main(void) {
@@ -50,11 +55,12 @@ int main(void) {
     const uint32_t mask = 1 << 31;
     CSR_SET_BITS(CSR_REG_MIE, mask);
 
-    // Fully connected
+    // Fully connected without bias
     strela_fully_connected(N, M,
                            /*input_offset=*/  0,
                            /*filter_offset=*/ 0,
                            /*output_offset=*/ 0,
+                           /*bias_data=*/     NULL,
                            input_data,
                            filter_data,
                            output_data);
@@ -63,7 +69,23 @@ int main(void) {
     for (int i = 0; i < N; i++) {
         if (output_data[i] != 136) pass = 0;
     }
-    PRINTF(pass ? "SUCCESS\n" : "FAIL\n");
+    PRINTF(pass ? "No-bias: SUCCESS\n" : "No-bias: FAIL\n");
+
+    // Fully connected with bias
+    strela_fully_connected(N, M,
+                           /*input_offset=*/  0,
+                           /*filter_offset=*/ 0,
+                           /*output_offset=*/ 0,
+                           /*bias_data=*/     bias_data,
+                           input_data,
+                           filter_data,
+                           output_data);
+
+    pass = 1;
+    for (int i = 0; i < N; i++) {
+        if (output_data[i] != 138) pass = 0;
+    }
+    PRINTF(pass ? "With-bias: SUCCESS\n" : "With-bias: FAIL\n");
 
     PRINTF("Exiting STRELA v2 fully connected app...\n\n");
     return 0;

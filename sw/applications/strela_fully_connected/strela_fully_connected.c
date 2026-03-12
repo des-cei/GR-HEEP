@@ -8,6 +8,7 @@
 // Kernels
 #include "strela_fully_connected_0_kernel.h"
 #include "strela_fully_connected_1_0_kernel.h"
+#include "strela_fully_connected_1_1_kernel.h"
 
 #define ISE_0_MAX 64
 #define ISE_1_MAX 64
@@ -78,11 +79,12 @@ void strela_fully_connected(int N, int M,
                             const int32_t input_offset,
                             const int32_t filter_offset,
                             const int32_t output_offset,
+                            const int32_t *bias_data,
                             const int32_t *input_data,
                             const int32_t *filter_data,
                             int32_t *output_data) {
-    
-    
+
+
     int rows_4 = N / 4;
     uint32_t sz = (uint32_t)sizeof(int32_t);
     uint32_t ise_param = sz << 16 | (sz * (uint32_t)M);
@@ -91,17 +93,19 @@ void strela_fully_connected(int N, int M,
     // Set input offset in bitstream 0
     set_pe_const(fc_0_kernel, 0, input_offset);
 
-    // Set filter offset in bitstream 1.0
-    set_pe_const(fc_1_0_kernel, 0, filter_offset);
-    set_pe_const(fc_1_0_kernel, 1, filter_offset);
-    set_pe_const(fc_1_0_kernel, 2, filter_offset);
-    set_pe_const(fc_1_0_kernel, 3, filter_offset);
-    
-    // Set delay value in bitstream 1.0
-    set_pe_delay_value(fc_1_0_kernel,  8, (uint32_t) M);
-    set_pe_delay_value(fc_1_0_kernel,  9, (uint32_t) M);
-    set_pe_delay_value(fc_1_0_kernel, 10, (uint32_t) M);
-    set_pe_delay_value(fc_1_0_kernel, 11, (uint32_t) M);
+    // Select kernel for phase 1 based on bias
+    uint32_t *fc_1_kernel = (bias_data != NULL) ? fc_1_1_kernel : fc_1_0_kernel;
+
+    // Set filter offset and delay value in the selected kernel
+    set_pe_const(fc_1_kernel, 0, filter_offset);
+    set_pe_const(fc_1_kernel, 1, filter_offset);
+    set_pe_const(fc_1_kernel, 2, filter_offset);
+    set_pe_const(fc_1_kernel, 3, filter_offset);
+
+    set_pe_delay_value(fc_1_kernel,  8, (uint32_t) M);
+    set_pe_delay_value(fc_1_kernel,  9, (uint32_t) M);
+    set_pe_delay_value(fc_1_kernel, 10, (uint32_t) M);
+    set_pe_delay_value(fc_1_kernel, 11, (uint32_t) M);
 
     // Modify ISE and OSE descriptors
     ise_0_tab[1].address = (uintptr_t)input_data;
@@ -109,14 +113,54 @@ void strela_fully_connected(int N, int M,
     ise_2_tab[3].opcode = (uint32_t)
         ((uint32_t)rows_4 << 25 | 1u << 24 | (uint32_t)M << 14 | TR_MEM_W_ISE);
 
+    if (bias_data != NULL) {
+        // iters=1, mode=0 (PE side), size=rows_4 -> word0 = 1<<25 | rows_4<<14 | opcode
+        uint32_t bias_opcode_w = 1u << 25 | (uint32_t)rows_4 << 14 | TR_MEM_W_ISE;
+        uint32_t bias_opcode_e = 1u << 25 | (uint32_t)rows_4 << 14 | TR_MEM_E_ISE;
+        // stride=4*sz between elements, size=rows_4*4*sz total bytes
+        uint32_t bias_wr_param = (4u * sz) << 16 | ((uint32_t)rows_4 * 4u * sz);
+
+        // ISE 0: configure kernel first, then write bias to MEM WEST 3 and MEM EAST 0
+        ise_0_tab[3] = (memory_node_t){TR_CONF_ISE, (uintptr_t)&fc_1_1_kernel[0],  4u << 16 | CONFIG_SIZE};
+        ise_0_tab[4] = (memory_node_t){bias_opcode_w, (uintptr_t)&bias_data[0], bias_wr_param};
+        ise_0_tab[5] = (memory_node_t){bias_opcode_e, (uintptr_t)&bias_data[1], bias_wr_param};
+
+        // ISE 1: no bias memories, just reconfigure kernel
+        ise_1_tab[2] = (memory_node_t){TR_CONF_ISE, (uintptr_t)&fc_1_1_kernel[21], 4u << 16 | CONFIG_SIZE};
+
+        // ISE 2: no bias memories, just reconfigure kernel (TR_MEM_W at [3] unchanged)
+        ise_2_tab[2] = (memory_node_t){TR_CONF_ISE, (uintptr_t)&fc_1_1_kernel[42], 4u << 16 | CONFIG_SIZE};
+
+        // ISE 3: configure kernel first, then write bias to MEM WEST 0 and MEM EAST 3
+        ise_3_tab[2] = (memory_node_t){TR_CONF_ISE, (uintptr_t)&fc_1_1_kernel[63], 4u << 16 | CONFIG_SIZE};
+        ise_3_tab[3] = (memory_node_t){bias_opcode_w, (uintptr_t)&bias_data[2], bias_wr_param};
+        ise_3_tab[4] = (memory_node_t){bias_opcode_e, (uintptr_t)&bias_data[3], bias_wr_param};
+    } else {
+        ise_0_tab[3] = (memory_node_t){TR_CONF_ISE, (uintptr_t)&fc_1_0_kernel[0],  4u << 16 | CONFIG_SIZE};
+        ise_1_tab[2] = (memory_node_t){TR_CONF_ISE, (uintptr_t)&fc_1_0_kernel[21], 4u << 16 | CONFIG_SIZE};
+        ise_2_tab[2] = (memory_node_t){TR_CONF_ISE, (uintptr_t)&fc_1_0_kernel[42], 4u << 16 | CONFIG_SIZE};
+        ise_3_tab[2] = (memory_node_t){TR_CONF_ISE, (uintptr_t)&fc_1_0_kernel[63], 4u << 16 | CONFIG_SIZE};
+    }
+
     for (int i = 0; i < 4; i++) {
         memory_node_t *tab = (i == 0) ? ise_0_tab :
                              (i == 1) ? ise_1_tab :
                              (i == 2) ? ise_2_tab : ise_3_tab;
 
-        int idx =   (i == 0) ? 4 :
-                    (i == 1) ? 3 : 
-                    (i == 2) ? 4 : 3;
+        int idx;
+        if (bias_data != NULL) {
+            // ise_0: [3]=W_bias,[4]=E_bias,[5]=CONF → filter starts at 6
+            // ise_1: [2]=CONF → filter starts at 3 (unchanged)
+            // ise_2: [2]=CONF,[3]=TR_MEM_W → filter starts at 4 (unchanged)
+            // ise_3: [2]=W_bias,[3]=E_bias,[4]=CONF → filter starts at 5
+            idx = (i == 0) ? 6 :
+                  (i == 1) ? 3 :
+                  (i == 2) ? 4 : 5;
+        } else {
+            idx = (i == 0) ? 4 :
+                  (i == 1) ? 3 :
+                  (i == 2) ? 4 : 3;
+        }
 
         for (int row = 0; row < rows_4; row++) {
             // Every ISE streams its filter slice
