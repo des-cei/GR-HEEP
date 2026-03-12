@@ -1,5 +1,4 @@
 #include <stdint.h>
-#include <string.h>
 #include "hart.h"
 #include "mmio.h"
 #include "gr_heep.h"
@@ -85,7 +84,9 @@ void strela_fully_connected(int N, int M,
     // Create remainder kernel copy with modified Router 1
     uint32_t fc_1_rest_kernel[CONFIG_SIZE];
     if (rest_4 > 0) {
-        memcpy(fc_1_rest_kernel, fc_1_kernel, CONFIG_BYTES);
+        for(int i = 0; i < CONFIG_SIZE; i++) {
+            fc_1_rest_kernel[i] = fc_1_kernel[i];
+        }
         static const uint32_t router1_vals[4] = {
             0, 0x00005000u, 0x0000D000u, 0x0001D000u
         };
@@ -97,7 +98,7 @@ void strela_fully_connected(int N, int M,
     ise_0_tab[1].params = ise_param;
 
     /* ----------------------------------------------------------------- */
-    /* Build ISE tables: phase 1 main + remainder                        */
+    /* Build ISE tables                                                  */
     /* ----------------------------------------------------------------- */
     for (int i = 0; i < 4; i++) {
         memory_node_t *tab = (i == 0) ? ise_0_tab :
@@ -116,11 +117,11 @@ void strela_fully_connected(int N, int M,
                 uint32_t bpar  = (4u * sz) << 16 | ((uint32_t)rows_4 * 4u * sz);
 
                 if (i == 0) {
-                    tab[idx++] = (memory_node_t){bop_w, (uintptr_t)&bias_data[0], bpar};
-                    tab[idx++] = (memory_node_t){bop_e, (uintptr_t)&bias_data[1], bpar};
-                } else if (i == 3) {
-                    tab[idx++] = (memory_node_t){bop_w, (uintptr_t)&bias_data[2], bpar};
+                    tab[idx++] = (memory_node_t){bop_w, (uintptr_t)&bias_data[1], bpar};
                     tab[idx++] = (memory_node_t){bop_e, (uintptr_t)&bias_data[3], bpar};
+                } else if (i == 3) {
+                    tab[idx++] = (memory_node_t){bop_w, (uintptr_t)&bias_data[0], bpar};
+                    tab[idx++] = (memory_node_t){bop_e, (uintptr_t)&bias_data[2], bpar};
                 }
             }
 
@@ -153,14 +154,14 @@ void strela_fully_connected(int N, int M,
 
                 if (i == 0) {
                     tab[idx++] = (memory_node_t){rbop_w,
-                        (uintptr_t)&bias_data[rows_4 * 4], rbpar};
-                    if (rest_4 >= 2) {
-                        tab[idx++] = (memory_node_t){rbop_e,
-                            (uintptr_t)&bias_data[rows_4 * 4 + 1], rbpar};
-                    }
-                } else if (i == 3 && rest_4 >= 3) {
+                        (uintptr_t)&bias_data[rows_4 * 4 + 1], rbpar};
+                } else if (i == 3) {
                     tab[idx++] = (memory_node_t){rbop_w,
-                        (uintptr_t)&bias_data[rows_4 * 4 + 2], rbpar};
+                        (uintptr_t)&bias_data[rows_4 * 4], rbpar};
+                    if (rest_4 >= 3) {
+                        tab[idx++] = (memory_node_t){rbop_e,
+                            (uintptr_t)&bias_data[rows_4 * 4 + 2], rbpar};
+                    }
                 }
             }
 
