@@ -6,7 +6,7 @@
 #include "csr_registers.h"
 #include "fast_intr_ctrl.h"
 #include "fast_intr_ctrl_regs.h"
-#include "strela_fc.h"
+#include "strela_fully_connected.h"
 
 /* By default, printfs are activated for FPGA and disabled for simulation. */
 #define PRINTF_IN_FPGA  1

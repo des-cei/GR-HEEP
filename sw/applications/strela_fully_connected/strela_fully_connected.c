@@ -7,7 +7,7 @@
 
 // Kernels
 #include "strela_fully_connected_0_kernel.h"
-#include "fc_wob_kernel.h"
+#include "strela_fully_connected_1_0_kernel.h"
 
 #define ISE_0_MAX 64
 #define ISE_1_MAX 64
