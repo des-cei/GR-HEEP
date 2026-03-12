@@ -20,73 +20,102 @@
     #define PRINTF(...)
 #endif
 
-#define N 16
-#define M 16
+#define MAX_N 16
+#define MAX_M 16
 
-// Input: values 1..N
-static const int32_t input_data[N] = {
-     1,  2,  3,  4,  5,  6,  7,  8,
-     9, 10, 11, 12, 13, 14, 15, 16
-};
+static int32_t input_data [MAX_M];
+static int32_t filter_data[MAX_N * MAX_M];
+static int32_t bias_data  [MAX_N];
+static int32_t output_data[MAX_N];
+static int32_t expected   [MAX_N];
 
-// Filter: all ones
-static const int32_t filter_data[N * M] = {
-    [0 ... N * M - 1] = 1
-};
+/* Reference fully-connected: out[i] = sum_j((in[j]+in_off)*(w[i][j]+w_off)) + bias[i] */
+static void fc_ref(int N, int M,
+                   int32_t in_off, int32_t w_off,
+                   const int32_t *bias,
+                   const int32_t *in, const int32_t *w,
+                   int32_t *out) {
+    for (int i = 0; i < N; i++) {
+        int32_t acc = 0;
+        for (int j = 0; j < M; j++)
+            acc += (in[j] + in_off) * (w[i * M + j] + w_off);
+        out[i] = acc + (bias ? bias[i] : 0);
+    }
+}
 
-// Bias: all twos (expected output with bias = 136 + 2 = 138)
-static const int32_t bias_data[N] = {
-    [0 ... N - 1] = 2
-};
+/* Fill input, filter, and bias with non-trivial patterns for given N, M */
+static void fill_data(int N, int M) {
+    for (int j = 0; j < M; j++)
+        input_data[j] = (j % 5) - 2;              /* -2,-1,0,1,2,-2,-1,... */
 
-static int32_t output_data[N];
+    for (int i = 0; i < N; i++)
+        for (int j = 0; j < M; j++)
+            filter_data[i * M + j] = ((i + j * 3) % 7) - 3;  /* -3..3 */
+
+    for (int i = 0; i < N; i++)
+        bias_data[i] = (i % 6) - 2;               /* -2,-1,0,1,2,3,-2,... */
+}
+
+/* Compare STRELA output against reference, print result */
+static int check(const char *tag, int N) {
+    for (int i = 0; i < N; i++) {
+        if (output_data[i] != expected[i]) {
+            PRINTF("  %s FAIL [%d]: got %d, expected %d\n",
+                   tag, i, (int)output_data[i], (int)expected[i]);
+            return 0;
+        }
+    }
+    PRINTF("  %s PASS\n", tag);
+    return 1;
+}
+
+/* Run one test: STRELA vs reference, with and without bias */
+static int run_test(int N, int M, int32_t in_off, int32_t w_off) {
+    PRINTF("Test N=%d M=%d in_off=%d w_off=%d\n", N, M, (int)in_off, (int)w_off);
+    fill_data(N, M);
+
+    int ok = 1;
+
+    /* Without bias */
+    fc_ref(N, M, in_off, w_off, NULL, input_data, filter_data, expected);
+    strela_fully_connected(N, M, in_off, w_off, 0, NULL,
+                           input_data, filter_data, output_data);
+    ok &= check("no-bias", N);
+
+    /* With bias */
+    fc_ref(N, M, in_off, w_off, bias_data, input_data, filter_data, expected);
+    strela_fully_connected(N, M, in_off, w_off, 0, bias_data,
+                           input_data, filter_data, output_data);
+    ok &= check("bias   ", N);
+
+    return ok;
+}
 
 int main(void) {
-    PRINTF("\nStarting STRELA v2 fully connected app...\n");
+    PRINTF("\nStarting STRELA v2 fully connected tests...\n\n");
 
-    // Core configurations ------------
     enable_all_fast_interrupts(true);
-
-    // Enable interrupt on processor side
-    // Enable global interrupt for machine-level interrupts
     CSR_SET_BITS(CSR_REG_MSTATUS, 0x8);
-
-    // Set mie.MEIE bit to one to enable machine-level fast interrupts
     const uint32_t mask = 1 << 31;
     CSR_SET_BITS(CSR_REG_MIE, mask);
 
-    // Fully connected without bias
-    strela_fully_connected(N, M,
-                           /*input_offset=*/  0,
-                           /*filter_offset=*/ 0,
-                           /*output_offset=*/ 0,
-                           /*bias_data=*/     NULL,
-                           input_data,
-                           filter_data,
-                           output_data);
+    int all_pass = 1;
 
-    int pass = 1;
-    for (int i = 0; i < N; i++) {
-        if (output_data[i] != 136) pass = 0;
-    }
-    PRINTF(pass ? "No-bias: SUCCESS\n" : "No-bias: FAIL\n");
+    /* N multiple of 4 */
+    all_pass &= run_test(16, 16,  0,  0);
+    all_pass &= run_test( 8, 16,  0,  0);
+    all_pass &= run_test( 4,  8,  1, -1);
 
-    // Fully connected with bias
-    strela_fully_connected(N, M,
-                           /*input_offset=*/  0,
-                           /*filter_offset=*/ 0,
-                           /*output_offset=*/ 0,
-                           /*bias_data=*/     bias_data,
-                           input_data,
-                           filter_data,
-                           output_data);
+    /* N not multiple of 4 */
+    all_pass &= run_test( 7, 16,  0,  0);
+    all_pass &= run_test( 5,  8,  2,  0);
+    all_pass &= run_test( 6, 16, -1,  1);
 
-    pass = 1;
-    for (int i = 0; i < N; i++) {
-        if (output_data[i] != 138) pass = 0;
-    }
-    PRINTF(pass ? "With-bias: SUCCESS\n" : "With-bias: FAIL\n");
+    /* Only remainder (N < 4) */
+    all_pass &= run_test( 3, 16,  0,  0);
+    all_pass &= run_test( 2,  8,  0,  0);
+    all_pass &= run_test( 1,  4,  0,  0);
 
-    PRINTF("Exiting STRELA v2 fully connected app...\n\n");
-    return 0;
+    PRINTF("\n%s\n", all_pass ? "ALL TESTS PASSED" : "SOME TESTS FAILED");
+    return all_pass ? 0 : 1;
 }
