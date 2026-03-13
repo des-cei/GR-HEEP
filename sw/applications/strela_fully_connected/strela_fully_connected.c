@@ -251,9 +251,21 @@ void strela_fully_connected(int N, int M,
     // Clamp output
     set_pe_const(fc_2_kernel, 0, output_activation_min);
     set_pe_const(fc_2_kernel, 4, output_activation_min);
+    set_pe_const(fc_2_kernel, 1, output_activation_min);
+    set_pe_const(fc_2_kernel, 5, output_activation_min);
+    set_pe_const(fc_2_kernel, 10, output_activation_min);
+    set_pe_const(fc_2_kernel, 14, output_activation_min);
+    set_pe_const(fc_2_kernel, 11, output_activation_min);
+    set_pe_const(fc_2_kernel, 15, output_activation_min);
 
     set_pe_const(fc_2_kernel, 2, output_activation_max);
     set_pe_const(fc_2_kernel, 3, output_activation_max);
+    set_pe_const(fc_2_kernel, 6, output_activation_max);
+    set_pe_const(fc_2_kernel, 7, output_activation_max);
+    set_pe_const(fc_2_kernel, 8, output_activation_max);
+    set_pe_const(fc_2_kernel, 9, output_activation_max);
+    set_pe_const(fc_2_kernel, 12, output_activation_max);
+    set_pe_const(fc_2_kernel, 13, output_activation_max);
 
     // ISE tabs
     ise_0_tab[0] = (memory_node_t){TR_CONF_ISE, (uintptr_t)&fc_2_kernel[ 0], 4u << 16 | CONFIG_SIZE};
@@ -261,20 +273,26 @@ void strela_fully_connected(int N, int M,
     ise_2_tab[0] = (memory_node_t){TR_CONF_ISE, (uintptr_t)&fc_2_kernel[42], 4u << 16 | CONFIG_SIZE};
     ise_3_tab[0] = (memory_node_t){TR_CONF_ISE, (uintptr_t)&fc_2_kernel[63], 4u << 16 | CONFIG_SIZE};
 
-    ise_0_tab[1] = (memory_node_t){TR_VER_ISE, (uintptr_t)output_data, 4u << 16 | (uint32_t)N * 4u};
-    ise_1_tab[1] = (memory_node_t){IDLE_SE, 0, 0};
-    ise_2_tab[1] = (memory_node_t){IDLE_SE, 0, 0};
-    ise_3_tab[1] = (memory_node_t){IDLE_SE, 0, 0};
+    ise_0_tab[1] = (memory_node_t){TR_VER_ISE, (uintptr_t)&output_data[       0], 4u << 16 | (uint32_t)rows_4 * 4u};
+    ise_1_tab[1] = (memory_node_t){TR_VER_ISE, (uintptr_t)&output_data[  rows_4], 4u << 16 | (uint32_t)rows_4 * 4u};
+    ise_2_tab[1] = (memory_node_t){TR_VER_ISE, (uintptr_t)&output_data[2*rows_4], 4u << 16 | (uint32_t)rows_4 * 4u};
+    ise_3_tab[1] = (memory_node_t){TR_VER_ISE, (uintptr_t)&output_data[3*rows_4], 4u << 16 | (uint32_t)(rows_4+rest_4) * 4u};
 
     ise_0_tab[2] = (memory_node_t){IDLE_SE, 0, 0};
+    ise_1_tab[2] = (memory_node_t){IDLE_SE, 0, 0};
+    ise_2_tab[2] = (memory_node_t){IDLE_SE, 0, 0};
+    ise_3_tab[2] = (memory_node_t){IDLE_SE, 0, 0};
 
     // OSE tabs
-    ose_0_tab[0] = (memory_node_t){IDLE_SE, 0, 0};
-    ose_1_tab[0] = (memory_node_t){IDLE_SE, 0, 0};
-    ose_2_tab[0] = (memory_node_t){TR_SOUTH_OSE, (uintptr_t)output_data, 4u << 16 | (uint32_t)N * 4u};
-    ose_3_tab[0] = (memory_node_t){IDLE_SE, 0, 0};
+    ose_0_tab[0] = (memory_node_t){TR_SOUTH_OSE, (uintptr_t)&output_data[3*rows_4], 4u << 16 | (uint32_t)(rows_4+rest_4) * 4u};
+    ose_1_tab[0] = (memory_node_t){TR_SOUTH_OSE, (uintptr_t)&output_data[2*rows_4], 4u << 16 | (uint32_t)rows_4 * 4u};
+    ose_2_tab[0] = (memory_node_t){TR_SOUTH_OSE, (uintptr_t)&output_data[       0], 4u << 16 | (uint32_t)rows_4 * 4u};
+    ose_3_tab[0] = (memory_node_t){TR_SOUTH_OSE, (uintptr_t)&output_data[  rows_4], 4u << 16 | (uint32_t)rows_4 * 4u};
 
+    ose_0_tab[1] = (memory_node_t){IDLE_SE, 0, 0};
+    ose_1_tab[1] = (memory_node_t){IDLE_SE, 0, 0};
     ose_2_tab[1] = (memory_node_t){IDLE_SE, 0, 0};
+    ose_3_tab[1] = (memory_node_t){IDLE_SE, 0, 0};
 
     mmio_region_write32(strela, (ptrdiff_t)STRELA_CTRL_REG_OFFSET, 1u << STRELA_CTRL_CLR_BIT);
     mmio_region_write32(strela, (ptrdiff_t)STRELA_MODE_REG_OFFSET, 1u << STRELA_MODE_INTR_EN_BIT);

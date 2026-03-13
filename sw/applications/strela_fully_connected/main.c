@@ -109,19 +109,19 @@ int main(void) {
     int all_pass = 1;
 
     /* N multiple of 4 */
-    all_pass &= run_test(16, 16,  0,  0, 20, 10, 15, 200);
-    all_pass &= run_test( 8, 16,  0,  0, 20, 10, 15, 200);
-    all_pass &= run_test( 4,  8,  1, -1, 20, 10, 15, 200);
+    all_pass &= run_test(16, 16,  0,  0, 0x7FFF8000,  0, -200,  200);  // scale x1, baseline
+    all_pass &= run_test( 8, 16,  0,  0, 0x3FFF8000,  0, -200,  200);  // scale x0.5
+    all_pass &= run_test( 4,  8,  1, -1, 0x7FFF8000,  2, -200,  200);  // shift=2: divide por 4
 
     /* N not multiple of 4 */
-    all_pass &= run_test( 7, 16,  0,  0, 20, 10, 15, 200);
-    all_pass &= run_test( 5,  8,  2,  0, 20, 10, 15, 200);
-    all_pass &= run_test( 6, 16, -1,  1, 20, 10, 15, 200);
+    all_pass &= run_test( 7, 16,  0,  0, 0x7FFF8000,  0,  -20,   20);  // clamp +-20
+    all_pass &= run_test( 5,  8,  2,  0, 0x7FFF8000,  0,    0,  200);  // ReLU (clamp min=0)
+    all_pass &= run_test( 6, 16, -1,  1, 0x7FFF8000, -1, -200,  200);  // scale x2
 
     /* Only remainder (N < 4) */
-    all_pass &= run_test( 3, 16,  0,  0, 20, 10, 15, 200);
-    all_pass &= run_test( 2,  8,  0,  0, 20, 10, 15, 200);
-    all_pass &= run_test( 1,  4,  0,  0, 20, 10, 15, 200);
+    all_pass &= run_test( 3, 16,  0,  0, 0x3FFF8000,  0,  -10,   10);  // scale x0.5 + clamp +-10
+    all_pass &= run_test( 2,  8,  0,  0, 0x7FFF8000,  1,    0,   30);  // scale x0.5 (shift=1) + clamp min=0
+    all_pass &= run_test( 1,  4,  0,  0, 0x7FFF8000,  0,    5,   50);  // clamp min=5
 
     PRINTF("\n%s\n", all_pass ? "ALL TESTS PASSED" : "SOME TESTS FAILED");
     return all_pass ? 0 : 1;
