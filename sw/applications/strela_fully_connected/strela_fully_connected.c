@@ -9,6 +9,7 @@
 #include "strela_fully_connected_0_kernel.h"
 #include "strela_fully_connected_1_0_kernel.h"
 #include "strela_fully_connected_1_1_kernel.h"
+#include "strela_fully_connected_2_kernel.h"
 
 #define ISE_0_MAX 64
 #define ISE_1_MAX 64
@@ -21,34 +22,26 @@
 
 #define ROUTER1_IDX 41
 
-/* Phase 0 entries (static, never change) */
-static memory_node_t ise_0_tab[ISE_0_MAX] = {
-    {TR_CONF_ISE, (uintptr_t)&fc_0_kernel[0], 4u << 16 | CONFIG_SIZE},
-    {TR_NORTH_ISE, (uintptr_t)0, 0},  // 1 -> change with addr and params
-    {FENCE_SE, 0, 0}
-    // completed in runtime
-};
+static volatile memory_node_t ise_0_tab[ISE_0_MAX];
+static volatile memory_node_t ise_1_tab[ISE_1_MAX];
+static volatile memory_node_t ise_2_tab[ISE_2_MAX];
+static volatile memory_node_t ise_3_tab[ISE_3_MAX];
 
-static memory_node_t ise_1_tab[ISE_1_MAX] = {
-    {TR_CONF_ISE, (uintptr_t)&fc_0_kernel[21], 4u << 16 | CONFIG_SIZE},
-    {FENCE_SE, 0, 0}
-};
+static volatile memory_node_t ose_0_tab[OSE_0_MAX];
+static volatile memory_node_t ose_1_tab[OSE_1_MAX];
+static volatile memory_node_t ose_2_tab[OSE_2_MAX];
+static volatile memory_node_t ose_3_tab[OSE_3_MAX];
 
-static memory_node_t ise_2_tab[ISE_2_MAX] = {
-    {TR_CONF_ISE, (uintptr_t)&fc_0_kernel[42], 4u << 16 | CONFIG_SIZE},
-    {FENCE_SE, 0, 0}
-};
-
-static memory_node_t ise_3_tab[ISE_3_MAX] = {
-    {TR_CONF_ISE, (uintptr_t)&fc_0_kernel[63], 4u << 16 | CONFIG_SIZE},
-    {FENCE_SE, 0, 0}
-};
-
-static memory_node_t ose_0_tab[OSE_0_MAX];
-static memory_node_t ose_1_tab[OSE_1_MAX];
-static memory_node_t ose_2_tab[OSE_2_MAX];
-static memory_node_t ose_3_tab[OSE_3_MAX];
-
+int32_t MultiplyByQuantizedMultiplier(int64_t x, int32_t quantized_multiplier,
+                                      int shift) {
+    int32_t reduced_multiplier = (quantized_multiplier < 0x7FFF0000)
+                                     ? ((quantized_multiplier + (1 << 15)) >> 16)
+                                     : 0x7FFF;
+    int total_shift = 15 - shift;
+    x = (x * (int64_t)reduced_multiplier) + ((int64_t)1 << (total_shift - 1));
+    int32_t result = (int32_t)(x >> total_shift);
+    return result;
+}
 
 void strela_fully_connected(int N, int M,
                             const int32_t input_offset,
@@ -57,6 +50,10 @@ void strela_fully_connected(int N, int M,
                             const int32_t *bias_data,
                             const int32_t *input_data,
                             const int32_t *filter_data,
+                            const int32_t output_multiplier,
+                            const int32_t output_shift,
+                            const int32_t output_activation_min,
+                            const int32_t output_activation_max,
                             int32_t *output_data) {
 
     int rows_4 = N / 4;
@@ -93,15 +90,24 @@ void strela_fully_connected(int N, int M,
         fc_1_rest_kernel[ROUTER1_IDX] = router1_vals[rest_4];
     }
 
-    // Phase 0: fill input address and params
-    ise_0_tab[1].address = (uintptr_t)input_data;
-    ise_0_tab[1].params = ise_param;
-
     /* ----------------------------------------------------------------- */
     /* Build ISE tables                                                  */
     /* ----------------------------------------------------------------- */
+    ise_0_tab[0] = (memory_node_t){TR_CONF_ISE, (uintptr_t)&fc_0_kernel[ 0], 4u << 16 | CONFIG_SIZE};
+    ise_0_tab[1] = (memory_node_t){TR_NORTH_ISE, (uintptr_t)input_data, ise_param};
+    ise_0_tab[2] = (memory_node_t){FENCE_SE, 0, 0};
+
+    ise_1_tab[0] = (memory_node_t){TR_CONF_ISE, (uintptr_t)&fc_0_kernel[21], 4u << 16 | CONFIG_SIZE};
+    ise_1_tab[1] = (memory_node_t){FENCE_SE, 0, 0};
+
+    ise_2_tab[0] = (memory_node_t){TR_CONF_ISE, (uintptr_t)&fc_0_kernel[42], 4u << 16 | CONFIG_SIZE};
+    ise_2_tab[1] = (memory_node_t){FENCE_SE, 0, 0};
+
+    ise_3_tab[0] = (memory_node_t){TR_CONF_ISE, (uintptr_t)&fc_0_kernel[63], 4u << 16 | CONFIG_SIZE};
+    ise_3_tab[1] = (memory_node_t){FENCE_SE, 0, 0};
+
     for (int i = 0; i < 4; i++) {
-        memory_node_t *tab = (i == 0) ? ise_0_tab :
+        volatile memory_node_t *tab = (i == 0) ? ise_0_tab :
                              (i == 1) ? ise_1_tab :
                              (i == 2) ? ise_2_tab : ise_3_tab;
         int idx = (i == 0) ? 3 : 2;
@@ -187,7 +193,7 @@ void strela_fully_connected(int N, int M,
     uint32_t ose_param_rest = sz << 16 | sz;
 
     for (int i = 0; i < 4; i++) {
-        memory_node_t *tab = (i == 0) ? ose_0_tab :
+        volatile memory_node_t *tab = (i == 0) ? ose_0_tab :
                              (i == 1) ? ose_1_tab :
                              (i == 2) ? ose_2_tab : ose_3_tab;
         int idx = 0;
@@ -220,6 +226,55 @@ void strela_fully_connected(int N, int M,
     /* Configure STRELA and launch execution                             */
     /* ----------------------------------------------------------------- */
     mmio_region_t strela = mmio_region_from_addr(STRELA_PERIPH_START_ADDRESS);
+
+    mmio_region_write32(strela, (ptrdiff_t)STRELA_CTRL_REG_OFFSET, 1u << STRELA_CTRL_CLR_BIT);
+    mmio_region_write32(strela, (ptrdiff_t)STRELA_MODE_REG_OFFSET, 1u << STRELA_MODE_INTR_EN_BIT);
+
+    mmio_region_write32(strela, (ptrdiff_t)STRELA_ISE_0_TAB_ADDR_REG_OFFSET, (uint32_t)ise_0_tab);
+    mmio_region_write32(strela, (ptrdiff_t)STRELA_ISE_1_TAB_ADDR_REG_OFFSET, (uint32_t)ise_1_tab);
+    mmio_region_write32(strela, (ptrdiff_t)STRELA_ISE_2_TAB_ADDR_REG_OFFSET, (uint32_t)ise_2_tab);
+    mmio_region_write32(strela, (ptrdiff_t)STRELA_ISE_3_TAB_ADDR_REG_OFFSET, (uint32_t)ise_3_tab);
+    mmio_region_write32(strela, (ptrdiff_t)STRELA_OSE_0_TAB_ADDR_REG_OFFSET, (uint32_t)ose_0_tab);
+    mmio_region_write32(strela, (ptrdiff_t)STRELA_OSE_1_TAB_ADDR_REG_OFFSET, (uint32_t)ose_1_tab);
+    mmio_region_write32(strela, (ptrdiff_t)STRELA_OSE_2_TAB_ADDR_REG_OFFSET, (uint32_t)ose_2_tab);
+    mmio_region_write32(strela, (ptrdiff_t)STRELA_OSE_3_TAB_ADDR_REG_OFFSET, (uint32_t)ose_3_tab);
+
+    mmio_region_write32(strela, (ptrdiff_t)STRELA_CTRL_REG_OFFSET, 1u << STRELA_CTRL_START_BIT);
+
+    wait_for_interrupt();
+
+    // Scale output
+    for(int i = 0; i < N; i++) {
+        output_data[i] = MultiplyByQuantizedMultiplier(output_data[i], output_multiplier, output_shift);
+    }
+
+    // Clamp output
+    set_pe_const(fc_2_kernel, 0, output_activation_min);
+    set_pe_const(fc_2_kernel, 4, output_activation_min);
+
+    set_pe_const(fc_2_kernel, 2, output_activation_max);
+    set_pe_const(fc_2_kernel, 3, output_activation_max);
+
+    // ISE tabs
+    ise_0_tab[0] = (memory_node_t){TR_CONF_ISE, (uintptr_t)&fc_2_kernel[ 0], 4u << 16 | CONFIG_SIZE};
+    ise_1_tab[0] = (memory_node_t){TR_CONF_ISE, (uintptr_t)&fc_2_kernel[21], 4u << 16 | CONFIG_SIZE};
+    ise_2_tab[0] = (memory_node_t){TR_CONF_ISE, (uintptr_t)&fc_2_kernel[42], 4u << 16 | CONFIG_SIZE};
+    ise_3_tab[0] = (memory_node_t){TR_CONF_ISE, (uintptr_t)&fc_2_kernel[63], 4u << 16 | CONFIG_SIZE};
+
+    ise_0_tab[1] = (memory_node_t){TR_VER_ISE, (uintptr_t)output_data, 4u << 16 | (uint32_t)N * 4u};
+    ise_1_tab[1] = (memory_node_t){IDLE_SE, 0, 0};
+    ise_2_tab[1] = (memory_node_t){IDLE_SE, 0, 0};
+    ise_3_tab[1] = (memory_node_t){IDLE_SE, 0, 0};
+
+    ise_0_tab[2] = (memory_node_t){IDLE_SE, 0, 0};
+
+    // OSE tabs
+    ose_0_tab[0] = (memory_node_t){IDLE_SE, 0, 0};
+    ose_1_tab[0] = (memory_node_t){IDLE_SE, 0, 0};
+    ose_2_tab[0] = (memory_node_t){TR_SOUTH_OSE, (uintptr_t)output_data, 4u << 16 | (uint32_t)N * 4u};
+    ose_3_tab[0] = (memory_node_t){IDLE_SE, 0, 0};
+
+    ose_2_tab[1] = (memory_node_t){IDLE_SE, 0, 0};
 
     mmio_region_write32(strela, (ptrdiff_t)STRELA_CTRL_REG_OFFSET, 1u << STRELA_CTRL_CLR_BIT);
     mmio_region_write32(strela, (ptrdiff_t)STRELA_MODE_REG_OFFSET, 1u << STRELA_MODE_INTR_EN_BIT);

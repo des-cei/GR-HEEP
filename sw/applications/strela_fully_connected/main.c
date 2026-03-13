@@ -34,12 +34,19 @@ static void fc_ref(int N, int M,
                    int32_t in_off, int32_t w_off,
                    const int32_t *bias,
                    const int32_t *in, const int32_t *w,
+                   const int32_t output_multiplier,
+                   const int32_t output_shift,
+                   const int32_t output_activation_min,
+                   const int32_t output_activation_max,
                    int32_t *out) {
     for (int i = 0; i < N; i++) {
         int32_t acc = 0;
         for (int j = 0; j < M; j++)
             acc += (in[j] + in_off) * (w[i * M + j] + w_off);
-        out[i] = acc + (bias ? bias[i] : 0);
+        acc += (bias ? bias[i] : 0);
+        acc = MultiplyByQuantizedMultiplier(acc, output_multiplier, output_shift);
+        acc = (acc > output_activation_min) ? acc : output_activation_min;
+        out[i] = (acc < output_activation_max) ? acc : output_activation_max;
     }
 }
 
@@ -70,22 +77,22 @@ static int check(const char *tag, int N) {
 }
 
 /* Run one test: STRELA vs reference, with and without bias */
-static int run_test(int N, int M, int32_t in_off, int32_t w_off) {
+static int run_test(int N, int M, int32_t in_off, int32_t w_off, int32_t o_mul, int32_t o_shf, int32_t o_min, int32_t o_max) {
     PRINTF("Test N=%d M=%d in_off=%d w_off=%d\n", N, M, (int)in_off, (int)w_off);
     fill_data(N, M);
 
     int ok = 1;
 
     /* Without bias */
-    fc_ref(N, M, in_off, w_off, NULL, input_data, filter_data, expected);
+    fc_ref(N, M, in_off, w_off, NULL, input_data, filter_data, o_mul, o_shf, o_min, o_max, expected);
     strela_fully_connected(N, M, in_off, w_off, 0, NULL,
-                           input_data, filter_data, output_data);
+                           input_data, filter_data, o_mul, o_shf, o_min, o_max, output_data);
     ok &= check("no-bias", N);
 
     /* With bias */
-    fc_ref(N, M, in_off, w_off, bias_data, input_data, filter_data, expected);
+    fc_ref(N, M, in_off, w_off, bias_data, input_data, filter_data, o_mul, o_shf, o_min, o_max, expected);
     strela_fully_connected(N, M, in_off, w_off, 0, bias_data,
-                           input_data, filter_data, output_data);
+                           input_data, filter_data, o_mul, o_shf, o_min, o_max, output_data);
     ok &= check("bias   ", N);
 
     return ok;
@@ -102,19 +109,19 @@ int main(void) {
     int all_pass = 1;
 
     /* N multiple of 4 */
-    all_pass &= run_test(16, 16,  0,  0);
-    all_pass &= run_test( 8, 16,  0,  0);
-    all_pass &= run_test( 4,  8,  1, -1);
+    all_pass &= run_test(16, 16,  0,  0, 20, 10, 15, 200);
+    all_pass &= run_test( 8, 16,  0,  0, 20, 10, 15, 200);
+    all_pass &= run_test( 4,  8,  1, -1, 20, 10, 15, 200);
 
     /* N not multiple of 4 */
-    all_pass &= run_test( 7, 16,  0,  0);
-    all_pass &= run_test( 5,  8,  2,  0);
-    all_pass &= run_test( 6, 16, -1,  1);
+    all_pass &= run_test( 7, 16,  0,  0, 20, 10, 15, 200);
+    all_pass &= run_test( 5,  8,  2,  0, 20, 10, 15, 200);
+    all_pass &= run_test( 6, 16, -1,  1, 20, 10, 15, 200);
 
     /* Only remainder (N < 4) */
-    all_pass &= run_test( 3, 16,  0,  0);
-    all_pass &= run_test( 2,  8,  0,  0);
-    all_pass &= run_test( 1,  4,  0,  0);
+    all_pass &= run_test( 3, 16,  0,  0, 20, 10, 15, 200);
+    all_pass &= run_test( 2,  8,  0,  0, 20, 10, 15, 200);
+    all_pass &= run_test( 1,  4,  0,  0, 20, 10, 15, 200);
 
     PRINTF("\n%s\n", all_pass ? "ALL TESTS PASSED" : "SOME TESTS FAILED");
     return all_pass ? 0 : 1;
