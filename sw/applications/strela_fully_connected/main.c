@@ -23,11 +23,11 @@
 #define MAX_N 16
 #define MAX_M 16
 
-static int32_t input_data [MAX_M];
-static int32_t filter_data[MAX_N * MAX_M];
-static int32_t bias_data  [MAX_N];
-static int32_t output_data[MAX_N];
-static int32_t expected   [MAX_N];
+static int32_t input_data [MAX_M] __attribute__((section(".xheep_data_interleaved")));;
+static int32_t filter_data[MAX_N * MAX_M] __attribute__((section(".xheep_data_interleaved")));;
+static int32_t bias_data  [MAX_N] __attribute__((section(".xheep_data_interleaved")));;
+static int32_t output_data[MAX_N] __attribute__((section(".xheep_data_interleaved")));;
+static int32_t expected   [MAX_N] __attribute__((section(".xheep_data_interleaved")));;
 
 /* Reference fully-connected: out[i] = sum_j((in[j]+in_off)*(w[i][j]+w_off)) + bias[i] */
 static void fc_ref(int N, int M,

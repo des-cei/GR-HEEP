@@ -22,15 +22,17 @@
 
 #define ROUTER1_IDX 41
 
-static volatile memory_node_t ise_0_tab[ISE_0_MAX];
-static volatile memory_node_t ise_1_tab[ISE_1_MAX];
-static volatile memory_node_t ise_2_tab[ISE_2_MAX];
-static volatile memory_node_t ise_3_tab[ISE_3_MAX];
+uint32_t fc_1_rest_kernel[CONFIG_SIZE] __attribute__((section(".xheep_data_interleaved")));
 
-static volatile memory_node_t ose_0_tab[OSE_0_MAX];
-static volatile memory_node_t ose_1_tab[OSE_1_MAX];
-static volatile memory_node_t ose_2_tab[OSE_2_MAX];
-static volatile memory_node_t ose_3_tab[OSE_3_MAX];
+static volatile memory_node_t ise_0_tab[ISE_0_MAX] __attribute__((section(".xheep_data_interleaved")));
+static volatile memory_node_t ise_1_tab[ISE_1_MAX] __attribute__((section(".xheep_data_interleaved")));
+static volatile memory_node_t ise_2_tab[ISE_2_MAX] __attribute__((section(".xheep_data_interleaved")));
+static volatile memory_node_t ise_3_tab[ISE_3_MAX] __attribute__((section(".xheep_data_interleaved")));
+
+static volatile memory_node_t ose_0_tab[OSE_0_MAX] __attribute__((section(".xheep_data_interleaved")));
+static volatile memory_node_t ose_1_tab[OSE_1_MAX] __attribute__((section(".xheep_data_interleaved")));
+static volatile memory_node_t ose_2_tab[OSE_2_MAX] __attribute__((section(".xheep_data_interleaved")));
+static volatile memory_node_t ose_3_tab[OSE_3_MAX] __attribute__((section(".xheep_data_interleaved")));
 
 int32_t MultiplyByQuantizedMultiplier(int64_t x, int32_t quantized_multiplier,
                                       int shift) {
@@ -79,7 +81,6 @@ void strela_fully_connected(int N, int M,
     set_pe_delay_value(fc_1_kernel, 11, (uint32_t)M);
 
     // Create remainder kernel copy with modified Router 1
-    uint32_t fc_1_rest_kernel[CONFIG_SIZE];
     if (rest_4 > 0) {
         for(int i = 0; i < CONFIG_SIZE; i++) {
             fc_1_rest_kernel[i] = fc_1_kernel[i];
