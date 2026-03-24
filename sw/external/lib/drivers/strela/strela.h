@@ -46,6 +46,45 @@ typedef struct {
 	uint32_t params;
 } memory_node_t;
 
+/*************** Descriptor helpers ***************/
+
+// Build a memory_node_t for internal-memory operations (TR_MEM_W_ISE, TR_MEM_E_ISE,
+// CFG_MEM_W_OSE, CFG_MEM_E_OSE, TR_MEM_W_OSE, TR_MEM_E_OSE).
+//
+// opcode : one of TR_MEM_W_ISE, TR_MEM_E_ISE, ...
+// iters  : number of times to replay the size-element burst (usually 1)
+// mode   : 0 = PE-side port, 1 = horizontal port
+// size   : number of elements to store in the internal SRAM
+// addr   : starting word address inside the internal SRAM (usually 0)
+// data   : pointer to source/destination in system memory
+// stride : byte step between consecutive system-memory accesses
+// total  : total bytes to transfer from/to system memory (stride * size * iters)
+static inline memory_node_t mem_node_mem(uint8_t opcode,
+                                         uint32_t iters, uint32_t mode,
+                                         uint32_t size,  uint32_t addr,
+                                         const void *data,
+                                         uint32_t stride, uint32_t total) {
+    return (memory_node_t){
+        .opcode  = (iters << 25u) | (mode << 24u) | (size << 14u) | (addr << 4u) | opcode,
+        .address = (uintptr_t)data,
+        .params  = (stride << 16u) | total
+    };
+}
+
+// Build a memory_node_t for simple stream transfers (TR_NORTH_ISE, TR_SOUTH_OSE,
+// TR_VER_ISE, TR_CONF_ISE, ...) where the opcode field is just the opcode.
+//
+// stride : byte step between consecutive system-memory accesses
+// total  : total bytes to transfer
+static inline memory_node_t mem_node_tr(uint8_t opcode, const void *data,
+                                        uint32_t stride, uint32_t total) {
+    return (memory_node_t){
+        .opcode  = opcode,
+        .address = (uintptr_t)data,
+        .params  = (stride << 16u) | total
+    };
+}
+
 /*************** Functions   ***************/
 
 static inline uint32_t get_pe_initial_value(uint32_t *conf_addr, uint8_t pe_number) {
