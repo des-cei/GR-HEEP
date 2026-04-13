@@ -10,7 +10,7 @@
 #include "strela.h"
 #include "strela_regs.h"
 #include "soc_ctrl.h"
-#include "kernel.h"
+#include "bypass.h"
 
 /* By default, printfs are activated for FPGA and disabled for simulation. */
 #define PRINTF_IN_FPGA  1
@@ -25,47 +25,54 @@
 #endif
 
 #define DATA_SIZE 100
+#define OFFSET_8 3
+#define OFFSET_16 1
 
 // Global definitions
 mmio_region_t strela;
 
-int32_t input_a[DATA_SIZE];
-int32_t input_b[DATA_SIZE];
-int32_t output[DATA_SIZE];
+int8_t input_8[DATA_SIZE+4] __attribute__((section(".xheep_data_interleaved")));
+int16_t input_16[DATA_SIZE+2] __attribute__((section(".xheep_data_interleaved")));
+int32_t input_32[DATA_SIZE] __attribute__((section(".xheep_data_interleaved")));
+int32_t output_32[DATA_SIZE] __attribute__((section(".xheep_data_interleaved")));
+int32_t output_32_1[DATA_SIZE] __attribute__((section(".xheep_data_interleaved")));
+int32_t output_32_2[DATA_SIZE] __attribute__((section(".xheep_data_interleaved")));
 
 memory_node_t ise_0_table[] = {
-    {TR_CONF_ISE, (uintptr_t)&kernel[0], 4 << 16 | CONFIG_SIZE},
-    // {TR_VER_ISE, (uintptr_t)&input_a[0], sizeof(uint32_t) << 16 | sizeof(uint32_t) * DATA_SIZE},
+    {TR_CONF_ISE, (uintptr_t)&bypass[0], 4 << 16 | CONFIG_SIZE},
+    {TR_NORTH_8_ISE, (uintptr_t)&input_8[OFFSET_8], sizeof(int8_t) << 16 | sizeof(int8_t) * DATA_SIZE},
     {IDLE_SE, 0, 0}
 };
 
 memory_node_t ise_1_table[] = {
-    {TR_CONF_ISE, (uintptr_t)&kernel[21], 4 << 16 | CONFIG_SIZE},
-    {TR_NORTH_ISE, (uintptr_t)&input_b[0], sizeof(uint32_t) << 16 | sizeof(uint32_t) * DATA_SIZE},
+    {TR_CONF_ISE, (uintptr_t)&bypass[21], 4 << 16 | CONFIG_SIZE},
+    {TR_NORTH_16_ISE, (uintptr_t)&input_16[OFFSET_16], sizeof(int16_t) << 16 | sizeof(int16_t) * DATA_SIZE},
     {IDLE_SE, 0, 0}
 };
 
 memory_node_t ise_2_table[] = {
-    {TR_CONF_ISE, (uintptr_t)&kernel[42], 4 << 16 | CONFIG_SIZE},
+    {TR_CONF_ISE, (uintptr_t)&bypass[42], 4 << 16 | CONFIG_SIZE},
+    {TR_NORTH_32_ISE, (uintptr_t)&input_32[0], sizeof(int32_t) << 16 | sizeof(int32_t) * DATA_SIZE},
     {IDLE_SE, 0, 0}
 };
 
 memory_node_t ise_3_table[] = {
-    {TR_CONF_ISE, (uintptr_t)&kernel[63], 4 << 16 | CONFIG_SIZE},
-    {1 << 25 | 1 << 24 | DATA_SIZE << 14 | 0 << 4 | TR_MEM_W_ISE, (uintptr_t)&input_a[0], sizeof(uint32_t) << 16 | sizeof(uint32_t) * DATA_SIZE},
+    {TR_CONF_ISE, (uintptr_t)&bypass[63], 4 << 16 | CONFIG_SIZE},
     {IDLE_SE, 0, 0}
 };
 
 memory_node_t ose_0_table[] = {
-    {TR_SOUTH_OSE, (uintptr_t)&output[0], sizeof(uint32_t) << 16 | sizeof(uint32_t) * DATA_SIZE},
+    {TR_SOUTH_32_OSE, (uintptr_t)&output_32[0], sizeof(int32_t) << 16 | sizeof(int32_t) * DATA_SIZE},
     {IDLE_SE, 0, 0}
 };
 
 memory_node_t ose_1_table[] = {
+    {TR_SOUTH_32_OSE, (uintptr_t)&output_32_1[0], sizeof(int32_t) << 16 | sizeof(int32_t) * DATA_SIZE},
     {IDLE_SE, 0, 0}
 };
 
 memory_node_t ose_2_table[] = {
+    {TR_SOUTH_32_OSE, (uintptr_t)&output_32_2[0], sizeof(int32_t) << 16 | sizeof(int32_t) * DATA_SIZE},
     {IDLE_SE, 0, 0}
 };
 
@@ -86,12 +93,20 @@ int main(void) {
     const uint32_t mask = 1 << 31;
     CSR_SET_BITS(CSR_REG_MIE, mask);
 
-    
-
-    for(int i = 0; i < DATA_SIZE; i++) {
-        input_a[i] = i;
-        input_b[i] = 2*i;
+    for(int32_t i = 0; i < DATA_SIZE; i++) {
+        int32_t aux = i % 2 == 0 ? i : -i;
+        input_8[i] = (int8_t) aux;
+        input_16[i] = (int16_t) aux;
+        input_32[i] = aux;
     }
+
+    input_8[DATA_SIZE] = 100;
+    input_8[DATA_SIZE+1] = -101;
+    input_8[DATA_SIZE+2] = 102;
+    input_8[DATA_SIZE+3] = -103;
+
+    input_16[DATA_SIZE] = 100;
+    input_16[DATA_SIZE+1] = -101;
 
     // STRELA
     strela = mmio_region_from_addr(STRELA_PERIPH_START_ADDRESS);
@@ -133,7 +148,11 @@ int main(void) {
     int errors = 0;
 
     for(int x = 0; x < DATA_SIZE; x++) {
-        if(output[x] != input_a[x] * input_b[x])
+        if(output_32[x] != (int32_t)input_8[x+OFFSET_8])
+            errors++;
+        if(output_32_1[x] != (int32_t)input_16[x+OFFSET_16])
+            errors++;
+        if(output_32_2[x] != input_32[x])
             errors++;
     }
 

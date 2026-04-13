@@ -10,21 +10,63 @@
 #define CONFIG_SIZE (NPE * 5 + NROUTERS)
 #define CONFIG_BYTES (CONFIG_SIZE * 4)
 
+// OPCODES
 #define IDLE_SE 0
 #define FENCE_ISE 1
 #define FENCE_OSE 1
 #define FENCE_SE 2
-#define TR_NORTH_ISE 3
-#define TR_SOUTH_OSE 3
-#define TR_VER_ISE 4
-#define TR_VER_OSE 4
-#define TR_MEM_W_ISE 5
-#define CFG_MEM_W_OSE 5
-#define TR_MEM_E_ISE 6
-#define TR_MEM_W_OSE 6
-#define TR_CONF_ISE 7
-#define CFG_MEM_E_OSE 7
-#define TR_MEM_E_OSE 8
+#define TR_CONF_ISE 3
+#define CFG_MEM_W_OSE 4
+#define CFG_MEM_E_OSE 5
+// RESERVED
+#define TR_NORTH_1_ISE 8
+#define TR_NORTH_2_ISE 9
+#define TR_NORTH_4_ISE 10
+#define TR_NORTH_8_ISE 11
+#define TR_NORTH_16_ISE 12
+#define TR_NORTH_32_ISE 13
+#define TR_SOUTH_1_OSE 8
+#define TR_SOUTH_2_OSE 9
+#define TR_SOUTH_4_OSE 10
+#define TR_SOUTH_8_OSE 11
+#define TR_SOUTH_16_OSE 12
+#define TR_SOUTH_32_OSE 13
+#define TR_VER_1_ISE 14
+#define TR_VER_2_ISE 15
+#define TR_VER_4_ISE 16
+#define TR_VER_8_ISE 17
+#define TR_VER_16_ISE 18
+#define TR_VER_32_ISE 19
+#define TR_VER_1_OSE 14
+#define TR_VER_2_OSE 15
+#define TR_VER_4_OSE 16
+#define TR_VER_8_OSE 17
+#define TR_VER_16_OSE 18
+#define TR_VER_32_OSE 19
+#define TR_MEM_W_1_ISE 20
+#define TR_MEM_W_2_ISE 21
+#define TR_MEM_W_4_ISE 22
+#define TR_MEM_W_8_ISE 23
+#define TR_MEM_W_16_ISE 24
+#define TR_MEM_W_32_ISE 25
+#define TR_MEM_W_1_OSE 20
+#define TR_MEM_W_2_OSE 21
+#define TR_MEM_W_4_OSE 22
+#define TR_MEM_W_8_OSE 23
+#define TR_MEM_W_16_OSE 24
+#define TR_MEM_W_32_OSE 25
+#define TR_MEM_E_1_ISE 26
+#define TR_MEM_E_2_ISE 27
+#define TR_MEM_E_4_ISE 28
+#define TR_MEM_E_8_ISE 29
+#define TR_MEM_E_16_ISE 30
+#define TR_MEM_E_32_ISE 31
+#define TR_MEM_E_1_OSE 26
+#define TR_MEM_E_2_OSE 27
+#define TR_MEM_E_4_OSE 28
+#define TR_MEM_E_8_OSE 29
+#define TR_MEM_E_16_OSE 30
+#define TR_MEM_E_32_OSE 31
 
 static const uint8_t PE_POSITION[16] = {
     3, 7, 11, 15,
