@@ -34,9 +34,9 @@ mmio_region_t strela;
 int8_t input_8[DATA_SIZE+4] __attribute__((section(".xheep_data_interleaved")));
 int16_t input_16[DATA_SIZE+2] __attribute__((section(".xheep_data_interleaved")));
 int32_t input_32[DATA_SIZE] __attribute__((section(".xheep_data_interleaved")));
+int8_t output_8[DATA_SIZE+4] __attribute__((section(".xheep_data_interleaved")));
+int16_t output_16[DATA_SIZE+2] __attribute__((section(".xheep_data_interleaved")));
 int32_t output_32[DATA_SIZE] __attribute__((section(".xheep_data_interleaved")));
-int32_t output_32_1[DATA_SIZE] __attribute__((section(".xheep_data_interleaved")));
-int32_t output_32_2[DATA_SIZE] __attribute__((section(".xheep_data_interleaved")));
 
 memory_node_t ise_0_table[] = {
     {TR_CONF_ISE, (uintptr_t)&bypass[0], 4 << 16 | CONFIG_SIZE},
@@ -62,17 +62,17 @@ memory_node_t ise_3_table[] = {
 };
 
 memory_node_t ose_0_table[] = {
-    {TR_SOUTH_32_OSE, (uintptr_t)&output_32[0], sizeof(int32_t) << 16 | sizeof(int32_t) * DATA_SIZE},
+    {TR_SOUTH_8_OSE, (uintptr_t)&output_8[OFFSET_8], sizeof(int8_t) << 16 | sizeof(int8_t) * DATA_SIZE},
     {IDLE_SE, 0, 0}
 };
 
 memory_node_t ose_1_table[] = {
-    {TR_SOUTH_32_OSE, (uintptr_t)&output_32_1[0], sizeof(int32_t) << 16 | sizeof(int32_t) * DATA_SIZE},
+    {TR_SOUTH_16_OSE, (uintptr_t)&output_16[0], sizeof(int16_t) << 16 | sizeof(int16_t) * DATA_SIZE},
     {IDLE_SE, 0, 0}
 };
 
 memory_node_t ose_2_table[] = {
-    {TR_SOUTH_32_OSE, (uintptr_t)&output_32_2[0], sizeof(int32_t) << 16 | sizeof(int32_t) * DATA_SIZE},
+    {TR_SOUTH_32_OSE, (uintptr_t)&output_32[0], sizeof(int32_t) << 16 | sizeof(int32_t) * DATA_SIZE},
     {IDLE_SE, 0, 0}
 };
 
@@ -148,11 +148,14 @@ int main(void) {
     int errors = 0;
 
     for(int x = 0; x < DATA_SIZE; x++) {
-        if(output_32[x] != (int32_t)input_8[x+OFFSET_8])
+        if(output_8[OFFSET_8+x] != input_8[x+OFFSET_8])
             errors++;
-        if(output_32_1[x] != (int32_t)input_16[x+OFFSET_16])
+        if(output_16[x] != input_16[x+OFFSET_16]) {
             errors++;
-        if(output_32_2[x] != input_32[x])
+            // if (x < 5) PRINTF("in: 0x%08x, out: 0x%08x\n", input_16[x+OFFSET_16], output_16[x]);
+        }
+            
+        if(output_32[x] != input_32[x])
             errors++;
     }
 
