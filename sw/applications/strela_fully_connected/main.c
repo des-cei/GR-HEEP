@@ -23,17 +23,17 @@
 #define MAX_N 16
 #define MAX_M 16
 
-static int32_t input_data [MAX_M] __attribute__((section(".xheep_data_interleaved")));;
-static int32_t filter_data[MAX_N * MAX_M] __attribute__((section(".xheep_data_interleaved")));;
-static int32_t bias_data  [MAX_N] __attribute__((section(".xheep_data_interleaved")));;
-static int32_t output_data[MAX_N] __attribute__((section(".xheep_data_interleaved")));;
-static int32_t expected   [MAX_N] __attribute__((section(".xheep_data_interleaved")));;
+static strela_fc_data_t input_data [MAX_M]          __attribute__((section(".xheep_data_interleaved")));;
+static strela_fc_data_t filter_data[MAX_N * MAX_M]  __attribute__((section(".xheep_data_interleaved")));;
+static int32_t          bias_data  [MAX_N]          __attribute__((section(".xheep_data_interleaved")));;
+static int32_t          output_data[MAX_N]          __attribute__((section(".xheep_data_interleaved")));;
+static int32_t          expected   [MAX_N]          __attribute__((section(".xheep_data_interleaved")));;
 
 /* Reference fully-connected: out[i] = sum_j((in[j]+in_off)*(w[i][j]+w_off)) + bias[i] */
 static void fc_ref(int N, int M,
                    int32_t in_off, int32_t w_off,
                    const int32_t *bias,
-                   const int32_t *in, const int32_t *w,
+                   const strela_fc_data_t *in, const strela_fc_data_t *w,
                    const int32_t output_multiplier,
                    const int32_t output_shift,
                    const int32_t output_activation_min,
@@ -42,7 +42,7 @@ static void fc_ref(int N, int M,
     for (int i = 0; i < N; i++) {
         int32_t acc = 0;
         for (int j = 0; j < M; j++)
-            acc += (in[j] + in_off) * (w[i * M + j] + w_off);
+            acc += ((int32_t)in[j] + in_off) * ((int32_t)w[i * M + j] + w_off);
         acc += (bias ? bias[i] : 0);
         acc = MultiplyByQuantizedMultiplier(acc, output_multiplier, output_shift);
         acc = (acc > output_activation_min) ? acc : output_activation_min;
@@ -53,11 +53,11 @@ static void fc_ref(int N, int M,
 /* Fill input, filter, and bias with non-trivial patterns for given N, M */
 static void fill_data(int N, int M) {
     for (int j = 0; j < M; j++)
-        input_data[j] = (j % 5) - 2;              /* -2,-1,0,1,2,-2,-1,... */
+        input_data[j] = (strela_fc_data_t)((j % 5) - 2);              /* -2,-1,0,1,2,-2,-1,... */
 
     for (int i = 0; i < N; i++)
         for (int j = 0; j < M; j++)
-            filter_data[i * M + j] = ((i + j * 3) % 7) - 3;  /* -3..3 */
+            filter_data[i * M + j] = (strela_fc_data_t)(((i + j * 3) % 7) - 3);  /* -3..3 */
 
     for (int i = 0; i < N; i++)
         bias_data[i] = (i % 6) - 2;               /* -2,-1,0,1,2,3,-2,... */

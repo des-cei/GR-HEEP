@@ -4,12 +4,26 @@
 #include "gr_heep.h"
 #include "strela.h"
 #include "strela_regs.h"
+#include "strela_fully_connected.h"
 
 // Kernels
 #include "strela_fully_connected_0_kernel.h"
 #include "strela_fully_connected_1_0_kernel.h"
 #include "strela_fully_connected_1_1_kernel.h"
 #include "strela_fully_connected_2_kernel.h"
+
+/* SEW-dependent opcodes for input/filter activations.
+ * Bias and output stay in 32-bit accumulator domain regardless of input SEW. */
+#if STRELA_FC_DTYPE == STRELA_FC_DTYPE_INT8
+    #define FC_TR_NORTH_ISE TR_NORTH_8_ISE
+    #define FC_TR_MEM_W_ISE TR_MEM_W_8_ISE
+#elif STRELA_FC_DTYPE == STRELA_FC_DTYPE_INT16
+    #define FC_TR_NORTH_ISE TR_NORTH_16_ISE
+    #define FC_TR_MEM_W_ISE TR_MEM_W_16_ISE
+#else
+    #define FC_TR_NORTH_ISE TR_NORTH_32_ISE
+    #define FC_TR_MEM_W_ISE TR_MEM_W_32_ISE
+#endif
 
 #define ISE_0_MAX 64
 #define ISE_1_MAX 64
@@ -50,8 +64,8 @@ void strela_fully_connected(int N, int M,
                             const int32_t filter_offset,
                             const int32_t output_offset,
                             const int32_t *bias_data,
-                            const int32_t *input_data,
-                            const int32_t *filter_data,
+                            const strela_fc_data_t *input_data,
+                            const strela_fc_data_t *filter_data,
                             const int32_t output_multiplier,
                             const int32_t output_shift,
                             const int32_t output_activation_min,
@@ -60,7 +74,8 @@ void strela_fully_connected(int N, int M,
 
     int rows_4 = N / 4;
     int rest_4 = N % 4;
-    uint32_t sz = (uint32_t)sizeof(int32_t);
+    uint32_t sz = (uint32_t)sizeof(strela_fc_data_t);  /* SEW of input/filter */
+    uint32_t bsz = (uint32_t)sizeof(int32_t);          /* bias/output element size */
     uint32_t ise_param = sz << 16 | (sz * (uint32_t)M);
 
     // Set input offset in bitstream 0
@@ -95,7 +110,7 @@ void strela_fully_connected(int N, int M,
     /* Build ISE tables                                                  */
     /* ----------------------------------------------------------------- */
     ise_0_tab[0] = (memory_node_t){TR_CONF_ISE, (uintptr_t)&fc_0_kernel[ 0], 4u << 16 | CONFIG_SIZE};
-    ise_0_tab[1] = (memory_node_t){TR_NORTH_32_ISE, (uintptr_t)input_data, ise_param};
+    ise_0_tab[1] = (memory_node_t){FC_TR_NORTH_ISE, (uintptr_t)input_data, ise_param};
     ise_0_tab[2] = (memory_node_t){FENCE_SE, 0, 0};
 
     ise_1_tab[0] = (memory_node_t){TR_CONF_ISE, (uintptr_t)&fc_0_kernel[21], 4u << 16 | CONFIG_SIZE};
@@ -121,7 +136,7 @@ void strela_fully_connected(int N, int M,
             if (bias_data != NULL) {
                 uint32_t bop_w = 1u << MEM_PARAM_ITER_OFFSET | (uint32_t)rows_4 << MEM_PARAM_SIZE_OFFSET | TR_MEM_W_32_ISE;
                 uint32_t bop_e = 1u << MEM_PARAM_ITER_OFFSET | (uint32_t)rows_4 << MEM_PARAM_SIZE_OFFSET | TR_MEM_E_32_ISE;
-                uint32_t bpar  = (4u * sz) << 16 | ((uint32_t)rows_4 * 4u * sz);
+                uint32_t bpar  = (4u * bsz) << 16 | ((uint32_t)rows_4 * 4u * bsz);
 
                 if (i == 0) {
                     tab[idx++] = (memory_node_t){bop_w, (uintptr_t)&bias_data[1], bpar};
@@ -139,7 +154,7 @@ void strela_fully_connected(int N, int M,
             }
 
             for (int row = 0; row < rows_4; row++) {
-                tab[idx++] = (memory_node_t){TR_NORTH_32_ISE,
+                tab[idx++] = (memory_node_t){FC_TR_NORTH_ISE,
                     (uintptr_t)&filter_data[M * i + 4 * M * row], ise_param};
             }
         }
@@ -157,7 +172,7 @@ void strela_fully_connected(int N, int M,
             if (bias_data != NULL) {
                 uint32_t rbop_w = 1u << MEM_PARAM_ITER_OFFSET | 1u << MEM_PARAM_SIZE_OFFSET | TR_MEM_W_32_ISE;
                 uint32_t rbop_e = 1u << MEM_PARAM_ITER_OFFSET | 1u << MEM_PARAM_SIZE_OFFSET | TR_MEM_E_32_ISE;
-                uint32_t rbpar  = sz << 16 | sz;
+                uint32_t rbpar  = bsz << 16 | bsz;
 
                 if (i == 0) {
                     tab[idx++] = (memory_node_t){rbop_w,
@@ -179,7 +194,7 @@ void strela_fully_connected(int N, int M,
             }
 
             if (i < rest_4) {
-                tab[idx++] = (memory_node_t){TR_NORTH_32_ISE,
+                tab[idx++] = (memory_node_t){FC_TR_NORTH_ISE,
                     (uintptr_t)&filter_data[M * i + 4 * M * rows_4], ise_param};
             }
         }
@@ -190,8 +205,8 @@ void strela_fully_connected(int N, int M,
     /* ----------------------------------------------------------------- */
     /* Build OSE tables                                                  */
     /* ----------------------------------------------------------------- */
-    uint32_t ose_param_main = (4u * sz) << 16 | (4u * sz * (uint32_t)rows_4);
-    uint32_t ose_param_rest = sz << 16 | sz;
+    uint32_t ose_param_main = (4u * bsz) << 16 | (4u * bsz * (uint32_t)rows_4);
+    uint32_t ose_param_rest = bsz << 16 | bsz;
 
     for (int i = 0; i < 4; i++) {
         volatile memory_node_t *tab = (i == 0) ? ose_0_tab :
