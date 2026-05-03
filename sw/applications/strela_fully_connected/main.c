@@ -101,6 +101,14 @@ static int run_test(int N, int M, int32_t in_off, int32_t w_off, int32_t o_mul, 
 int main(void) {
     PRINTF("\nStarting STRELA v2 fully connected tests...\n\n");
 
+#if STRELA_FC_DTYPE == STRELA_FC_DTYPE_INT8
+    PRINTF("DTYPE = 8 bits\n");
+#elif STRELA_FC_DTYPE == STRELA_FC_DTYPE_INT16
+    PRINTF("DTYPE = 16 bits\n");
+#elif STRELA_FC_DTYPE == STRELA_FC_DTYPE_INT32
+    PRINTF("DTYPE = 32 bits\n");
+#endif
+
     enable_all_fast_interrupts(true);
     CSR_SET_BITS(CSR_REG_MSTATUS, 0x8);
     const uint32_t mask = 1 << 31;

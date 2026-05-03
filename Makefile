@@ -166,6 +166,20 @@ questasim-run-app-gui:
 	@echo -e "\033[1m### DONE! Simulation finished. UART output:\033[0m"
 	@cat $(QUESTASIM_DIR)/uart0.log
 
+.PHONY: questasim-run-tflm-app
+questasim-run-tflm-app:
+	$(RISCV_XHEEP)bin/riscv32-unknown-elf-objcopy -O verilog ../tflm_x-heep/build/default/applications/$(PROJECT)/riscv32/$(PROJECT).elf ./build/main.hex
+	$(MAKE) -C $(QUESTASIM_DIR) run RUN_OPT=1 PLUSARGS="c firmware=../../main.hex"
+	@echo -e "\033[1m### DONE! Simulation finished. UART output:\033[0m"
+	@cat $(QUESTASIM_DIR)/uart0.log
+
+.PHONY: questasim-run-tflm-app-gui
+questasim-run-tflm-app-gui:
+	$(RISCV_XHEEP)bin/riscv32-unknown-elf-objcopy -O verilog ../tflm_x-heep/build/default/applications/$(PROJECT)/riscv32/$(PROJECT).elf ./build/main.hex
+	$(MAKE) -C $(QUESTASIM_DIR) run-gui RUN_OPT=1 PLUSARGS="c firmware=../../main.hex"
+	@echo -e "\033[1m### DONE! Simulation finished. UART output:\033[0m"
+	@cat $(QUESTASIM_DIR)/uart0.log
+
 ## @section Vivado
 
 ## Builds (synthesis and implementation) the bitstream for the FPGA version using Vivado
