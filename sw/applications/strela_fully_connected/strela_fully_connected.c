@@ -95,7 +95,7 @@ void strela_fully_connected(int N, int M,
     /* Build ISE tables                                                  */
     /* ----------------------------------------------------------------- */
     ise_0_tab[0] = (memory_node_t){TR_CONF_ISE, (uintptr_t)&fc_0_kernel[ 0], 4u << 16 | CONFIG_SIZE};
-    ise_0_tab[1] = (memory_node_t){TR_NORTH_ISE, (uintptr_t)input_data, ise_param};
+    ise_0_tab[1] = (memory_node_t){TR_NORTH_32_ISE, (uintptr_t)input_data, ise_param};
     ise_0_tab[2] = (memory_node_t){FENCE_SE, 0, 0};
 
     ise_1_tab[0] = (memory_node_t){TR_CONF_ISE, (uintptr_t)&fc_0_kernel[21], 4u << 16 | CONFIG_SIZE};
@@ -119,8 +119,8 @@ void strela_fully_connected(int N, int M,
                 (uintptr_t)&fc_1_kernel[i * 21], 4u << 16 | CONFIG_SIZE};
 
             if (bias_data != NULL) {
-                uint32_t bop_w = 1u << 25 | (uint32_t)rows_4 << 14 | TR_MEM_W_ISE;
-                uint32_t bop_e = 1u << 25 | (uint32_t)rows_4 << 14 | TR_MEM_E_ISE;
+                uint32_t bop_w = 1u << MEM_PARAM_ITER_OFFSET | (uint32_t)rows_4 << MEM_PARAM_SIZE_OFFSET | TR_MEM_W_32_ISE;
+                uint32_t bop_e = 1u << MEM_PARAM_ITER_OFFSET | (uint32_t)rows_4 << MEM_PARAM_SIZE_OFFSET | TR_MEM_E_32_ISE;
                 uint32_t bpar  = (4u * sz) << 16 | ((uint32_t)rows_4 * 4u * sz);
 
                 if (i == 0) {
@@ -134,12 +134,12 @@ void strela_fully_connected(int N, int M,
 
             if (i == 2) {
                 tab[idx++] = (memory_node_t){
-                    (uint32_t)((uint32_t)rows_4 << 25 | 1u << 24 | (uint32_t)M << 14 | TR_MEM_W_ISE),
+                    (uint32_t)((uint32_t)rows_4 << MEM_PARAM_ITER_OFFSET | 1u << MEM_PARAM_MODE_OFFSET | (uint32_t)M << 14 | TR_MEM_W_32_ISE),
                     0, 4u << 16};
             }
 
             for (int row = 0; row < rows_4; row++) {
-                tab[idx++] = (memory_node_t){TR_NORTH_ISE,
+                tab[idx++] = (memory_node_t){TR_NORTH_32_ISE,
                     (uintptr_t)&filter_data[M * i + 4 * M * row], ise_param};
             }
         }
@@ -155,8 +155,8 @@ void strela_fully_connected(int N, int M,
                 (uintptr_t)&fc_1_rest_kernel[i * 21], 4u << 16 | CONFIG_SIZE};
 
             if (bias_data != NULL) {
-                uint32_t rbop_w = 1u << 25 | 1u << 14 | TR_MEM_W_ISE;
-                uint32_t rbop_e = 1u << 25 | 1u << 14 | TR_MEM_E_ISE;
+                uint32_t rbop_w = 1u << MEM_PARAM_ITER_OFFSET | 1u << MEM_PARAM_SIZE_OFFSET | TR_MEM_W_32_ISE;
+                uint32_t rbop_e = 1u << MEM_PARAM_ITER_OFFSET | 1u << MEM_PARAM_SIZE_OFFSET | TR_MEM_E_32_ISE;
                 uint32_t rbpar  = sz << 16 | sz;
 
                 if (i == 0) {
@@ -174,12 +174,12 @@ void strela_fully_connected(int N, int M,
 
             if (i == 2) {
                 tab[idx++] = (memory_node_t){
-                    (uint32_t)(1u << 25 | 1u << 24 | (uint32_t)M << 14 | TR_MEM_W_ISE),
+                    (uint32_t)(1u << MEM_PARAM_ITER_OFFSET | 1u << MEM_PARAM_MODE_OFFSET | (uint32_t)M << 14 | TR_MEM_W_32_ISE),
                     0, 4u << 16};
             }
 
             if (i < rest_4) {
-                tab[idx++] = (memory_node_t){TR_NORTH_ISE,
+                tab[idx++] = (memory_node_t){TR_NORTH_32_ISE,
                     (uintptr_t)&filter_data[M * i + 4 * M * rows_4], ise_param};
             }
         }
@@ -201,13 +201,13 @@ void strela_fully_connected(int N, int M,
 
         if (i == 1) {
             tab[idx++] = (memory_node_t){
-                (uint32_t)((uint32_t)M << 14 | CFG_MEM_W_OSE), 0, 0};
+                (uint32_t)((uint32_t)M << MEM_PARAM_SIZE_OFFSET | CFG_MEM_W_OSE), 0, 0};
         }
 
         tab[idx++] = (memory_node_t){FENCE_SE, 0, 0};
 
         if (rows_4 > 0) {
-            tab[idx++] = (memory_node_t){TR_SOUTH_OSE,
+            tab[idx++] = (memory_node_t){TR_SOUTH_32_OSE,
                 (uintptr_t)&output_data[i], ose_param_main};
         }
 
@@ -216,7 +216,7 @@ void strela_fully_connected(int N, int M,
         }
 
         if (rest_4 > 0 && i < rest_4) {
-            tab[idx++] = (memory_node_t){TR_SOUTH_OSE,
+            tab[idx++] = (memory_node_t){TR_SOUTH_32_OSE,
                 (uintptr_t)&output_data[rows_4 * 4 + i], ose_param_rest};
         }
 
@@ -274,10 +274,10 @@ void strela_fully_connected(int N, int M,
     ise_2_tab[0] = (memory_node_t){TR_CONF_ISE, (uintptr_t)&fc_2_kernel[42], 4u << 16 | CONFIG_SIZE};
     ise_3_tab[0] = (memory_node_t){TR_CONF_ISE, (uintptr_t)&fc_2_kernel[63], 4u << 16 | CONFIG_SIZE};
 
-    ise_0_tab[1] = (memory_node_t){TR_VER_ISE, (uintptr_t)&output_data[       0], 4u << 16 | (uint32_t)rows_4 * 4u};
-    ise_1_tab[1] = (memory_node_t){TR_VER_ISE, (uintptr_t)&output_data[  rows_4], 4u << 16 | (uint32_t)rows_4 * 4u};
-    ise_2_tab[1] = (memory_node_t){TR_VER_ISE, (uintptr_t)&output_data[2*rows_4], 4u << 16 | (uint32_t)rows_4 * 4u};
-    ise_3_tab[1] = (memory_node_t){TR_VER_ISE, (uintptr_t)&output_data[3*rows_4], 4u << 16 | (uint32_t)(rows_4+rest_4) * 4u};
+    ise_0_tab[1] = (memory_node_t){TR_VER_32_ISE, (uintptr_t)&output_data[       0], 4u << 16 | (uint32_t)rows_4 * 4u};
+    ise_1_tab[1] = (memory_node_t){TR_VER_32_ISE, (uintptr_t)&output_data[  rows_4], 4u << 16 | (uint32_t)rows_4 * 4u};
+    ise_2_tab[1] = (memory_node_t){TR_VER_32_ISE, (uintptr_t)&output_data[2*rows_4], 4u << 16 | (uint32_t)rows_4 * 4u};
+    ise_3_tab[1] = (memory_node_t){TR_VER_32_ISE, (uintptr_t)&output_data[3*rows_4], 4u << 16 | (uint32_t)(rows_4+rest_4) * 4u};
 
     ise_0_tab[2] = (memory_node_t){IDLE_SE, 0, 0};
     ise_1_tab[2] = (memory_node_t){IDLE_SE, 0, 0};
@@ -285,10 +285,10 @@ void strela_fully_connected(int N, int M,
     ise_3_tab[2] = (memory_node_t){IDLE_SE, 0, 0};
 
     // OSE tabs
-    ose_0_tab[0] = (memory_node_t){TR_SOUTH_OSE, (uintptr_t)&output_data[3*rows_4], 4u << 16 | (uint32_t)(rows_4+rest_4) * 4u};
-    ose_1_tab[0] = (memory_node_t){TR_SOUTH_OSE, (uintptr_t)&output_data[2*rows_4], 4u << 16 | (uint32_t)rows_4 * 4u};
-    ose_2_tab[0] = (memory_node_t){TR_SOUTH_OSE, (uintptr_t)&output_data[       0], 4u << 16 | (uint32_t)rows_4 * 4u};
-    ose_3_tab[0] = (memory_node_t){TR_SOUTH_OSE, (uintptr_t)&output_data[  rows_4], 4u << 16 | (uint32_t)rows_4 * 4u};
+    ose_0_tab[0] = (memory_node_t){TR_SOUTH_32_OSE, (uintptr_t)&output_data[3*rows_4], 4u << 16 | (uint32_t)(rows_4+rest_4) * 4u};
+    ose_1_tab[0] = (memory_node_t){TR_SOUTH_32_OSE, (uintptr_t)&output_data[2*rows_4], 4u << 16 | (uint32_t)rows_4 * 4u};
+    ose_2_tab[0] = (memory_node_t){TR_SOUTH_32_OSE, (uintptr_t)&output_data[       0], 4u << 16 | (uint32_t)rows_4 * 4u};
+    ose_3_tab[0] = (memory_node_t){TR_SOUTH_32_OSE, (uintptr_t)&output_data[  rows_4], 4u << 16 | (uint32_t)rows_4 * 4u};
 
     ose_0_tab[1] = (memory_node_t){IDLE_SE, 0, 0};
     ose_1_tab[1] = (memory_node_t){IDLE_SE, 0, 0};

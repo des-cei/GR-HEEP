@@ -27,3 +27,8 @@ transcript
 
 # Ctags
 tags
+
+# STRELA
+sw/applications/*/dataset.h
+sw/applications/*/descriptor.h
+*.do

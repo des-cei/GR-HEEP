@@ -22,9 +22,9 @@ def gen_ise(index, in_n, in_k, in_m):
                 addrB = 2*col + 1
             else:
                 addrB = 2*col
-            print(f"    {{{rows} << 25 | 1 << 24 | {in_k} << 14 | 0 << 4 | TR_MEM_W_ISE, (uintptr_t)&matB[{addrB}], sizeof(uint32_t) * {in_m} << 16 | sizeof(uint32_t) * {in_m * in_k}}},")
+            print(f"    {{{rows} << MEM_PARAM_ITER_OFFSET | 1 << MEM_PARAM_MODE_OFFSET | {in_k} << MEM_PARAM_SIZE_OFFSET | 0 << MEM_PARAM_ADDR_OFFSET | TR_MEM_W_32_ISE, (uintptr_t)&matB[{addrB}], sizeof(uint32_t) * {in_m} << 16 | sizeof(uint32_t) * {in_m * in_k}}},")
         for row in range(rows):
-            print(f"    {{TR_VER_ISE, (uintptr_t)&matA[{row*4*in_k + index*in_k}], sizeof(uint32_t) << 16 | sizeof(uint32_t) * {in_k}}},")
+            print(f"    {{TR_VER_32_ISE, (uintptr_t)&matA[{row*4*in_k + index*in_k}], sizeof(uint32_t) << 16 | sizeof(uint32_t) * {in_k}}},")
         
     print("    {IDLE_SE, 0, 0}")
     print("};")
@@ -41,16 +41,16 @@ def gen_ose(index, in_n, in_k, in_m):
 
     for col in range(cols):
         if index == 1:
-            print(f"    {{0 << 24 | {rows} << 14 | 0 << 4 | CFG_MEM_E_OSE, 0, 0}},")
-            print(f"    {{0 << 24 | {rows} << 14 | 0 << 4 | CFG_MEM_W_OSE, 0, 0}},")
+            print(f"    {{0 << MEM_PARAM_MODE_OFFSET | {rows} << MEM_PARAM_SIZE_OFFSET | 0 << MEM_PARAM_ADDR_OFFSET | CFG_MEM_E_OSE, 0, 0}},")
+            print(f"    {{0 << MEM_PARAM_MODE_OFFSET | {rows} << MEM_PARAM_SIZE_OFFSET | 0 << MEM_PARAM_ADDR_OFFSET | CFG_MEM_W_OSE, 0, 0}},")
         elif index == 2 or index == 3:
-            print(f"    {{0 << 24 | {rows} << 14 | 0 << 4 | CFG_MEM_E_OSE, 0, 0}},")
-        print(f"    {{TR_SOUTH_OSE, (uintptr_t)&matC[{(2*col+1)+in_m*index}], (sizeof(uint32_t) * {4*in_m}) << 16 | sizeof(uint32_t) * {4*in_m*rows}}},")
+            print(f"    {{0 << MEM_PARAM_MODE_OFFSET | {rows} << MEM_PARAM_SIZE_OFFSET | 0 << MEM_PARAM_ADDR_OFFSET | CFG_MEM_E_OSE, 0, 0}},")
+        print(f"    {{TR_SOUTH_32_OSE, (uintptr_t)&matC[{(2*col+1)+in_m*index}], (sizeof(uint32_t) * {4*in_m}) << 16 | sizeof(uint32_t) * {4*in_m*rows}}},")
         if index == 1:
-            print(f"    {{0 << 24 | {rows} << 14 | 0 << 4 | TR_MEM_E_OSE, (uintptr_t)&matC[{(2*col)+in_m*index}], (sizeof(uint32_t) * {4*in_m}) << 16 | sizeof(uint32_t) * {4*in_m*rows}}},")
-            print(f"    {{0 << 24 | {rows} << 14 | 0 << 4 | TR_MEM_W_OSE, (uintptr_t)&matC[{(2*col)+in_m*(index-1)}], (sizeof(uint32_t) * {4*in_m}) << 16 | sizeof(uint32_t) * {4*in_m*rows}}},")
+            print(f"    {{0 << MEM_PARAM_MODE_OFFSET | {rows} << MEM_PARAM_SIZE_OFFSET | 0 << MEM_PARAM_ADDR_OFFSET | TR_MEM_E_32_OSE, (uintptr_t)&matC[{(2*col)+in_m*index}], (sizeof(uint32_t) * {4*in_m}) << 16 | sizeof(uint32_t) * {4*in_m*rows}}},")
+            print(f"    {{0 << MEM_PARAM_MODE_OFFSET | {rows} << MEM_PARAM_SIZE_OFFSET | 0 << MEM_PARAM_ADDR_OFFSET | TR_MEM_W_32_OSE, (uintptr_t)&matC[{(2*col)+in_m*(index-1)}], (sizeof(uint32_t) * {4*in_m}) << 16 | sizeof(uint32_t) * {4*in_m*rows}}},")
         elif index == 2 or index == 3:
-            print(f"    {{0 << 24 | {rows} << 14 | 0 << 4 | TR_MEM_E_OSE, (uintptr_t)&matC[{(2*col)+in_m*index}], (sizeof(uint32_t) * {4*in_m}) << 16 | sizeof(uint32_t) * {4*in_m*rows}}},")
+            print(f"    {{0 << MEM_PARAM_MODE_OFFSET | {rows} << MEM_PARAM_SIZE_OFFSET | 0 << MEM_PARAM_ADDR_OFFSET | TR_MEM_E_32_OSE, (uintptr_t)&matC[{(2*col)+in_m*index}], (sizeof(uint32_t) * {4*in_m}) << 16 | sizeof(uint32_t) * {4*in_m*rows}}},")
 
     print("    {IDLE_SE, 0, 0}")
     print("};")
