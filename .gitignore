@@ -30,5 +30,5 @@ tags
 
 # STRELA
 sw/applications/*/dataset.h
-sw/applications/*/descriptor.h
+sw/applications/*/descriptors.h
 *.do
