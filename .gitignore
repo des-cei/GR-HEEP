@@ -32,3 +32,4 @@ tags
 sw/applications/*/dataset.h
 sw/applications/*/descriptors.h
 *.do
+*.csv

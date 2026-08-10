@@ -17,6 +17,7 @@ from interrupts.interrupts import Interrupts
 from linker_script.linker_script import LinkerScript
 from memory_ss.memory_ss import MemorySS
 from memory_ss.linker_section import LinkerSection
+from memory_ss.linker_subsection import LinkerSubsection
 from peripherals.base_peripherals import (
     SOC_ctrl,
     Bootrom,
@@ -73,6 +74,12 @@ def config():
     # Linker script sections
     memory_ss.add_linker_section(LinkerSection.by_size("code", 0, 0x00018000))
     memory_ss.add_linker_section(LinkerSection("data", 0x00018000, None))
+    memory_ss.add_linker_section_for_banks(
+        "data_interleaved",
+        subsections=[LinkerSubsection("xheep_data_interleaved")],
+        interleaved=True,
+        il_group_name="data_interleaved",
+    )
     system.set_memory_ss(memory_ss)
 
     # Stack and heap sizes
