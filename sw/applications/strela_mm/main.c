@@ -92,7 +92,7 @@ int main(void) {
 
     int errors = 0;
 
-    for(int x = 0; x < 256; x++) {
+    for(int x = 0; x < M * N; x++) {
         if(matC_expected[x] != matC[x])
             errors++;
             // printf("Error: exp %ld, obt: %ld\n", matC_expected[x], matC[x]);
