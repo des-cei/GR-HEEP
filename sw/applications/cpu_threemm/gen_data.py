@@ -4,11 +4,19 @@
 import sys
 import random
 
-NI = int(sys.argv[1])
-NJ = int(sys.argv[2])
-NK = int(sys.argv[3])
-NL = int(sys.argv[4])
-NM = int(sys.argv[5])
+# Default problem size, so the script runs with no arguments (make gen-app-data).
+DEFAULT_N = 128
+
+
+def _arg(i, default=DEFAULT_N):
+    return int(sys.argv[i]) if len(sys.argv) > i else default
+
+
+NI = _arg(1)
+NJ = _arg(2)
+NK = _arg(3)
+NL = _arg(4)
+NM = _arg(5)
 
 
 def threemm_polybench(NI, NJ, NK, NL, NM, A, B, C, D):

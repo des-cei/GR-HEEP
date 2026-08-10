@@ -4,8 +4,16 @@
 import sys
 import random
 
-TSTEPS = int(sys.argv[1])
-N = int(sys.argv[2])
+# Default problem size, so the script runs with no arguments (make gen-app-data).
+DEFAULT_N = 128
+
+
+def _arg(i, default=DEFAULT_N):
+    return int(sys.argv[i]) if len(sys.argv) > i else default
+
+
+TSTEPS = _arg(1)
+N = _arg(2)
 
 
 def c_trunc_div(a, b):

@@ -81,9 +81,12 @@ Modes:
   same     matA/matB/matC all use the selected dtype. Values of matA and matB
            are clamped so that K * max_A * max_B fits in the dtype range —
            result never overflows.""")
-    parser.add_argument("M", type=int, help="rows of A and C")
-    parser.add_argument("K", type=int, help="cols of A / rows of B")
-    parser.add_argument("N", type=int, help="cols of B and C")
+    parser.add_argument("M", type=int, nargs="?", default=8,
+                        help="rows of A and C (default: 8)")
+    parser.add_argument("K", type=int, nargs="?", default=8,
+                        help="cols of A / rows of B (default: 8)")
+    parser.add_argument("N", type=int, nargs="?", default=8,
+                        help="cols of B and C (default: 8)")
     parser.add_argument("--dtype", choices=list(DTYPE_INFO.keys()), default="int32",
                         help="element type for matA/matB (default: int32)")
     parser.add_argument("--mode", choices=["accum32", "same"], default="accum32",

@@ -4,7 +4,15 @@
 import sys
 import random
 
-N = int(sys.argv[1])
+# Default problem size, so the script runs with no arguments (make gen-app-data).
+DEFAULT_N = 128
+
+
+def _arg(i, default=DEFAULT_N):
+    return int(sys.argv[i]) if len(sys.argv) > i else default
+
+
+N = _arg(1)
 
 
 def gemver_polybench(N, alpha, beta, A, u1, v1, u2, v2, w, x, y, z):

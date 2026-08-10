@@ -4,7 +4,15 @@
 import sys
 import random
 
-N = int(sys.argv[1])
+# Default problem size, so the script runs with no arguments (make gen-app-data).
+DEFAULT_N = 128
+
+
+def _arg(i, default=DEFAULT_N):
+    return int(sys.argv[i]) if len(sys.argv) > i else default
+
+
+N = _arg(1)
 
 
 def atax_polybench(N, M, A, x):

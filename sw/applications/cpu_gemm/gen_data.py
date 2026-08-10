@@ -4,9 +4,17 @@
 import sys
 import random
 
-NI = int(sys.argv[1])
-NJ = int(sys.argv[2])
-NK = int(sys.argv[3])
+# Default problem size, so the script runs with no arguments (make gen-app-data).
+DEFAULT_N = 128
+
+
+def _arg(i, default=DEFAULT_N):
+    return int(sys.argv[i]) if len(sys.argv) > i else default
+
+
+NI = _arg(1)
+NJ = _arg(2)
+NK = _arg(3)
 
 
 def gemm_polybench(NI, NJ, NK, alpha, beta, A, B, C):
