@@ -1,0 +1,81 @@
+{
+  "inputs": {
+    "input0": {
+      "channel": 2,
+      "location": [
+        "pe",
+        8,
+        "west"
+      ],
+      "address": "0x200",
+      "stride": 4,
+      "size": 3
+    },
+    "input1": {
+      "channel": 4,
+      "location": [
+        "pe",
+        4,
+        "west"
+      ],
+      "address": "0x210",
+      "stride": 4,
+      "size": 3
+    },
+    "input3": {
+      "channel": 14,
+      "location": [
+        "pe",
+        3,
+        "north"
+      ],
+      "address": "0x290",
+      "stride": 4,
+      "size": 3
+    },
+    "input4": {
+      "channel": 19,
+      "location": [
+        "bus",
+        1,
+        "hor_east"
+      ],
+      "address": "0x300",
+      "stride": 4,
+      "size": 3
+    },
+    "input2": {
+      "channel": 22,
+      "location": [
+        "pe",
+        15,
+        "east"
+      ],
+      "address": "0x280",
+      "stride": 4,
+      "size": 3
+    }
+  },
+  "outputs": {
+    "output1": {
+      "channel": 1,
+      "location": [
+        "bus",
+        0,
+        "hor_west"
+      ],
+      "address": "0x404",
+      "size": 1
+    },
+    "output0": {
+      "channel": 10,
+      "location": [
+        "pe",
+        13,
+        "south"
+      ],
+      "address": "0x400",
+      "size": 1
+    }
+  }
+}
