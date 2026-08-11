@@ -4,15 +4,19 @@
 import sys
 import random
 
-# Default problem size, so the script runs with no arguments (make gen-app-data).
-DEFAULT_N = 128
+# Default problem size, so the script runs with no arguments (make gen-app-data):
+# PolyBench 4.2.1 SMALL_DATASET (linear-algebra/kernels/atax). A is M x N,
+# so the two are not interchangeable.
+DEFAULT_M = 116
+DEFAULT_N = 124
 
 
-def _arg(i, default=DEFAULT_N):
+def _arg(i, default):
     return int(sys.argv[i]) if len(sys.argv) > i else default
 
 
-N = _arg(1)
+M = _arg(1, DEFAULT_M)
+N = _arg(2, DEFAULT_N)
 
 
 def atax_polybench(N, M, A, x):
@@ -31,9 +35,9 @@ def atax_polybench(N, M, A, x):
     return y
 
 
-A = [int(random.random() * 100.0 - 50.0) for _ in range(N * N)]
+A = [int(random.random() * 100.0 - 50.0) for _ in range(M * N)]
 x = [int(random.random() * 100.0 - 50.0) for _ in range(N)]
-expected_y = atax_polybench(N, N, A, x)
+expected_y = atax_polybench(N, M, A, x)
 
 
 def print_array(array_type, array_name, array_sz, pyarr):
@@ -56,8 +60,9 @@ def print_array_continuous(array_type, array_name, array_sz, pyarr):
 
 print("#include <stdint.h>\n")
 print("#define DATA_TYPE int32_t\n")
+print("#define M {}".format(M))
 print("#define N {}\n".format(N))
 
-print_array("DATA_TYPE", "A", "N*N", A)
+print_array("DATA_TYPE", "A", "M*N", A)
 print_array("DATA_TYPE", "x", "N", x)
 print_array_continuous("DATA_TYPE", "expected_y", "N", expected_y)

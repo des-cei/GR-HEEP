@@ -62,8 +62,31 @@ ROWS = 4          # the STRELA shell hard-codes a 4x4 fabric
 TILE_COLS = 2     # matB columns resident in scratchpads per pass
 LANES = 2         # independent lanes of gemm_2_hv
 
+# Row groups handled by a single pass: the ISE scratchpad replay count, and the
+# number of results each OSE-side scratchpad buffers before it is drained.
+#
+# This is a workaround for a hardware race, not a modelling choice. `output7` --
+# the only gemm_1_hv output that reaches its scratchpad over a router's
+# horizontal bus (MEM_W1 in mode 1, see gemm_1_hv_io_map.json; the other four
+# scratchpad outputs are mode 0 PE-border ports) -- loses the *last* word of its
+# drain once the drain is long enough for the OSE's obione FIFO to fill. In
+# rtl/strela_memory.sv the `valid_out` register that presents that word is
+# shared between the two directions, and the S_IDLE arm of its update guard
+# accepts either of them, so while the FSM sits in S_IDLE with the last word
+# pending, a `hor_ready_i` from the fabric side clears it before the OSE's
+# `ose_ready_i` takes it. The OSE then waits forever for its last element:
+# gemm hangs in the pass with exactly one element of matAB unwritten.
+#
+# Measured on Verilator, sweeping NI (= 4 * row groups), NJ and NK: 13 groups
+# per pass are fine at NK = 16, 56, 64 and 400; 14 hang at NK = 16, 56 and 64;
+# 20 and 50 hang at NK = 16. NJ moves the boundary as well, since it sets the
+# OSE's write stride and therefore how fast that FIFO drains -- so this is a
+# race, not a clean depth, and 8 is a margin rather than a proof. The real fix
+# belongs in strela_memory.sv.
+MAX_GROUPS = 8
 
-def build(ni, nj, nk, io_map_1, io_map_2):
+
+def build(ni, nj, nk, io_map_1, io_map_2, max_groups=MAX_GROUPS):
     prog = StreamProgram(
         io_map=io_map_1,
         kernel="gemm_1_hv_kernel",
@@ -86,23 +109,31 @@ def build(ni, nj, nk, io_map_1, io_map_2):
 
     for pair in range(col_pairs):
         b_cols = (TILE_COLS * pair, TILE_COLS * pair + 1)
-        with prog:
-            # Preload the two matB columns; each is replayed once per row group.
-            for b, col in enumerate(b_cols):
-                prog.mem(f"input{4 + b}", "matB", col,
-                         stride=nj * ELEM, count=nk, size=nk, iters=row_groups)
+        # A column pair is walked in chunks of at most MAX_GROUPS row groups;
+        # each chunk is a pass of its own, which re-preloads the two matB
+        # columns (nk extra reads) and bounds every scratchpad replay.
+        for first in range(0, row_groups, max_groups):
+            groups = min(max_groups, row_groups - first)
+            with prog:
+                # Preload the two matB columns; each is replayed once per row
+                # group of this chunk.
+                for b, col in enumerate(b_cols):
+                    prog.mem(f"input{4 + b}", "matB", col,
+                             stride=nj * ELEM, count=nk, size=nk, iters=groups)
 
-            # Stream the matA rows: ISE carrying input_j gets rows j, j+4, ...
-            for j in range(ROWS):
-                for group in range(row_groups):
-                    prog.stream(f"input{j}", "matA", (ROWS * group + j) * nk,
-                                stride=ELEM, count=nk)
-
-            # One descriptor per output walks the row groups, ROWS rows apart.
-            for b, col in enumerate(b_cols):
+                # Stream the matA rows: ISE carrying input_j gets rows j, j+4, ...
                 for j in range(ROWS):
-                    prog.out(f"output{j + ROWS * b}", "matAB", j * nj + col,
-                             stride=ROWS * nj * ELEM, count=row_groups)
+                    for group in range(first, first + groups):
+                        prog.stream(f"input{j}", "matA", (ROWS * group + j) * nk,
+                                    stride=ELEM, count=nk)
+
+                # One descriptor per output walks the chunk's row groups,
+                # ROWS rows apart.
+                for b, col in enumerate(b_cols):
+                    for j in range(ROWS):
+                        prog.out(f"output{j + ROWS * b}", "matAB",
+                                 (ROWS * first + j) * nj + col,
+                                 stride=ROWS * nj * ELEM, count=groups)
 
     # ---- the hand-off -------------------------------------------------------
     prog.fence()                                  # FENCE_SE, all eight engines
@@ -132,12 +163,12 @@ def main():
 The defaults must match gen_data.py's: `make gen-app-data PROJECT=strela_gemm`
 runs both with no arguments, so change NI/NJ/NK in both together.
 """)
-    parser.add_argument("NI", type=int, nargs="?", default=8,
-                        help="rows of matA, matC and matD (default: 8)")
-    parser.add_argument("NJ", type=int, nargs="?", default=8,
-                        help="cols of matB, matC and matD (default: 8)")
-    parser.add_argument("NK", type=int, nargs="?", default=8,
-                        help="cols of matA / rows of matB (default: 8)")
+    parser.add_argument("NI", type=int, nargs="?", default=60,
+                        help="rows of matA, matC and matD (default: 60)")
+    parser.add_argument("NJ", type=int, nargs="?", default=70,
+                        help="cols of matB, matC and matD (default: 70)")
+    parser.add_argument("NK", type=int, nargs="?", default=80,
+                        help="cols of matA / rows of matB (default: 80)")
     parser.add_argument("--io-map-1",
                         default=os.path.join(_HERE, "gemm_1_hv_io_map.json"),
                         help="io_map.json of the matmul kernel (default: the "
@@ -145,6 +176,10 @@ runs both with no arguments, so change NI/NJ/NK in both together.
     parser.add_argument("--io-map-2",
                         default=os.path.join(_HERE, "gemm_2_hv_io_map.json"),
                         help="io_map.json of the scale-and-add kernel")
+    parser.add_argument("--max-groups", type=int, default=MAX_GROUPS,
+                        metavar="N",
+                        help=f"row groups per pass (default: {MAX_GROUPS}); "
+                             "see MAX_GROUPS for why this is capped")
     parser.add_argument("--streams", metavar="FILE",
                         help="also write the streams.json model for the viewer")
     parser.add_argument("-o", "--output", metavar="FILE",
@@ -170,11 +205,12 @@ runs both with no arguments, so change NI/NJ/NK in both together.
             f"holds (max NI*NJ = {((1 << 16) - 1) // ELEM})")
     if nk > 511:
         raise SystemExit(f"NK={nk} exceeds the 512-word scratchpad (matB column)")
-    if ni // ROWS > 255:
-        raise SystemExit(f"NI={ni}: {ni // ROWS} scratchpad replays overflow the "
-                         "8-bit iters field (max NI = 1020)")
+    if not 1 <= args.max_groups <= 255:
+        raise SystemExit(f"--max-groups={args.max_groups}: a pass replays the "
+                         "scratchpad that many times, which must fit the 8-bit "
+                         "iters field")
 
-    prog = build(ni, nj, nk, args.io_map_1, args.io_map_2)
+    prog = build(ni, nj, nk, args.io_map_1, args.io_map_2, args.max_groups)
     prog.validate()
 
     note = (f"gemm {ni}x{nj}x{nk}: gemm_1_hv (matAB = matA*matB) then, behind a "

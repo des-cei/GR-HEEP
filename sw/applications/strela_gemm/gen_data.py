@@ -73,12 +73,12 @@ def main():
     parser = argparse.ArgumentParser(
         description="Generate the STRELA GEMM dataset header.",
         formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("NI", type=int, nargs="?", default=8,
-                        help="rows of A, C and D (default: 8)")
-    parser.add_argument("NJ", type=int, nargs="?", default=8,
-                        help="cols of B, C and D (default: 8)")
-    parser.add_argument("NK", type=int, nargs="?", default=8,
-                        help="cols of A / rows of B (default: 8)")
+    parser.add_argument("NI", type=int, nargs="?", default=60,
+                        help="rows of A, C and D (default: 60, PolyBench SMALL)")
+    parser.add_argument("NJ", type=int, nargs="?", default=70,
+                        help="cols of B, C and D (default: 70, PolyBench SMALL)")
+    parser.add_argument("NK", type=int, nargs="?", default=80,
+                        help="cols of A / rows of B (default: 80, PolyBench SMALL)")
     parser.add_argument("--seed", type=int, default=None,
                         help="optional RNG seed for reproducibility")
     args = parser.parse_args()

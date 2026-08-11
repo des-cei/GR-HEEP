@@ -19,7 +19,7 @@
 #endif
 
 // Scratch buffers, not part of the generated dataset
-static DATA_TYPE tmp[N];
+static DATA_TYPE tmp[M];
 static DATA_TYPE y[N];
 
 int main(void) {
@@ -30,10 +30,10 @@ int main(void) {
     CSR_WRITE(CSR_REG_MCOUNTINHIBIT, 0);
 
     CSR_WRITE(CSR_REG_MCYCLE, 0);
-    atax_cpu(N, N, A, x, y, tmp);
+    atax_cpu(N, M, A, x, y, tmp);
     CSR_READ(CSR_REG_MCYCLE, &sw_time);
 
-    PRINTF("Data size: %d\n", N);
+    PRINTF("Data size: %dx%d\n", M, N);
     PRINTF("Total cycles: %lu\n", sw_time);
 
     // Check results

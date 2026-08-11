@@ -4,16 +4,18 @@
 import sys
 import random
 
-# Default problem size, so the script runs with no arguments (make gen-app-data).
-DEFAULT_N = 128
+# Default problem size, so the script runs with no arguments (make gen-app-data):
+# PolyBench 4.2.1 SMALL_DATASET (stencils/jacobi-1d).
+DEFAULT_TSTEPS = 40
+DEFAULT_N = 120
 
 
-def _arg(i, default=DEFAULT_N):
+def _arg(i, default):
     return int(sys.argv[i]) if len(sys.argv) > i else default
 
 
-TSTEPS = _arg(1)
-N = _arg(2)
+TSTEPS = _arg(1, DEFAULT_TSTEPS)
+N = _arg(2, DEFAULT_N)
 
 
 def c_trunc_div(a, b):

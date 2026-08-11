@@ -58,7 +58,7 @@ APP_GEN_ARGS = {
     "cpu_gemver": lambda n: [str(n)],  # N
     "cpu_gesummv": lambda n: [str(n)],  # N
     "cpu_threemm": lambda n: [str(n)] * 5,  # NI NJ NK NL NM
-    "cpu_atax": lambda n: [str(n)],  # N (square: ATAX_N == ATAX_M)
+    "cpu_atax": lambda n: [str(n), str(n)],  # M N (square: ATAX_M == ATAX_N)
     "cpu_mvt": lambda n: [str(n)],  # N
     "cpu_jacobi1d": lambda n: [str(n), str(n)],  # TSTEPS N (both scale with size)
 }

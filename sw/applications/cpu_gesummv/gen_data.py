@@ -4,8 +4,9 @@
 import sys
 import random
 
-# Default problem size, so the script runs with no arguments (make gen-app-data).
-DEFAULT_N = 128
+# Default problem size, so the script runs with no arguments (make gen-app-data):
+# PolyBench 4.2.1 SMALL_DATASET (linear-algebra/blas/gesummv).
+DEFAULT_N = 90
 
 
 def _arg(i, default=DEFAULT_N):

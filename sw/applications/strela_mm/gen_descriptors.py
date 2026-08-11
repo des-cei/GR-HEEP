@@ -101,11 +101,11 @@ SEW selection:
     same     -> --dtype (matC is the same type as matA/matB)
 """,
     )
-    parser.add_argument("M", type=int, nargs="?", default=8,
+    parser.add_argument("M", type=int, nargs="?", default=64,
                         help="rows of A and C (default: 8)")
-    parser.add_argument("K", type=int, nargs="?", default=8,
+    parser.add_argument("K", type=int, nargs="?", default=64,
                         help="cols of A / rows of B (default: 8)")
-    parser.add_argument("N", type=int, nargs="?", default=8,
+    parser.add_argument("N", type=int, nargs="?", default=64,
                         help="cols of B and C (default: 8)")
     parser.add_argument("--io-map", default=os.path.join(_HERE, "mm_hv_io_map.json"),
                         help="io_map.json from map-bitstream "

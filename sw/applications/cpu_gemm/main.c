@@ -30,18 +30,20 @@ int main(void)
 
     CSR_WRITE(CSR_REG_MCYCLE, 0);
 
-    for (i = 0; i < NI; i++)
-    {
-        for (j = 0; j < NJ; j++)
-        {
-            sum = 0;
-            for (k = 0; k < NK; k++)
-            {
-                sum += A[i * NK + k] * B[k * NJ + j];
-            }
-            C[i * NJ + j] = alpha * sum + beta * C[i * NJ + j];
-        }
-    }
+    gemm_cpu(NI, NJ, NK, &alpha, &beta, A, B, C);
+
+    // for (i = 0; i < NI; i++)
+    // {
+    //     for (j = 0; j < NJ; j++)
+    //     {
+    //         sum = 0;
+    //         for (k = 0; k < NK; k++)
+    //         {
+    //             sum += A[i * NK + k] * B[k * NJ + j];
+    //         }
+    //         C[i * NJ + j] = alpha * sum + beta * C[i * NJ + j];
+    //     }
+    // }
     CSR_READ(CSR_REG_MCYCLE, &sw_time);
 
     PRINTF("Data size: %d, %d, %d\n", NI, NJ, NK);

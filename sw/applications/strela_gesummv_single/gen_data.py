@@ -61,11 +61,13 @@ PROJECT=strela_gesummv` runs both with no arguments, so change the two
 together. M must be even: the DFG produces two output rows per pass, and the
 M/2 rows of each half are streamed through one accumulator chain.
 """)
-    parser.add_argument("M", type=int, nargs="?", default=8,
-                        help="rows of A and B, i.e. length of y (default: 8)")
-    parser.add_argument("-n", "--cols", type=int, default=16,
+    parser.add_argument("M", type=int, nargs="?", default=90,
+                        help="rows of A and B, i.e. length of y (default: 90, "
+                             "PolyBench SMALL)")
+    parser.add_argument("-n", "--cols", type=int, default=90,
                         help="columns of A and B, i.e. the reduction length "
-                             "and the accumulators' delay_value (default: 16)")
+                             "and the accumulators' delay_value (default: 90, "
+                             "PolyBench SMALL)")
     parser.add_argument("--alpha", type=int, default=3,
                         help="scalar on A@x, a PE constant (default: 3)")
     parser.add_argument("--beta", type=int, default=5,
@@ -88,15 +90,12 @@ M/2 rows of each half are streamed through one accumulator chain.
         sys.exit(f"error: --range {rng} must be at least 1")
 
     half = m // 2
-    # Each half of A and of B is preloaded whole into one scratchpad.
-    if half * n > MAX_SIZE or half * n > MEM_DEPTH:
-        sys.exit(f"error: each scratchpad would hold M/2*N = {half * n} words, "
-                 f"past the {min(MAX_SIZE, MEM_DEPTH)} a 9-bit size field and a "
-                 f"{MEM_DEPTH}-word scratchpad allow; lower M or --cols")
-    # x is replayed once per output row of a half.
-    if half > MAX_ITERS:
-        sys.exit(f"error: x would be replayed {half} times, past the "
-                 f"{MAX_ITERS} an 8-bit iters field holds; lower M")
+    # gen_descriptors.py walks each half in blocks of whole rows, so what
+    # has to fit a scratchpad is one row, not one half.
+    if n > MAX_SIZE or n > MEM_DEPTH:
+        sys.exit(f"error: one row of A is {n} words, past the "
+                 f"{min(MAX_SIZE, MEM_DEPTH)} a 9-bit size field and a "
+                 f"{MEM_DEPTH}-word scratchpad allow; lower --cols")
     if n > MAX_DELAY:
         sys.exit(f"error: --cols {n} exceeds the {MAX_DELAY} an accumulator's "
                  "16-bit delay_value holds")

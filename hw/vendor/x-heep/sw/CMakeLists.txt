@@ -343,7 +343,7 @@ endif()
 if(NOT ${PROJECT} MATCHES "coremark")
   set(BASE_COMPILER_FLAGS "\
     -march=${CMAKE_SYSTEM_PROCESSOR} \
-    -w -O2 -g \
+    -w -O3 -g \
     -nostartfiles \
     -ffunction-sections \
     -DHOST_BUILD \

@@ -4,19 +4,24 @@
 import sys
 import random
 
-# Default problem size, so the script runs with no arguments (make gen-app-data).
-DEFAULT_N = 128
+# Default problem size, so the script runs with no arguments (make gen-app-data):
+# PolyBench 4.2.1 SMALL_DATASET (linear-algebra/kernels/3mm).
+DEFAULT_NI = 40
+DEFAULT_NJ = 50
+DEFAULT_NK = 60
+DEFAULT_NL = 70
+DEFAULT_NM = 80
 
 
-def _arg(i, default=DEFAULT_N):
+def _arg(i, default):
     return int(sys.argv[i]) if len(sys.argv) > i else default
 
 
-NI = _arg(1)
-NJ = _arg(2)
-NK = _arg(3)
-NL = _arg(4)
-NM = _arg(5)
+NI = _arg(1, DEFAULT_NI)
+NJ = _arg(2, DEFAULT_NJ)
+NK = _arg(3, DEFAULT_NK)
+NL = _arg(4, DEFAULT_NL)
+NM = _arg(5, DEFAULT_NM)
 
 
 def threemm_polybench(NI, NJ, NK, NL, NM, A, B, C, D):
