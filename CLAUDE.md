@@ -163,7 +163,7 @@ Two families:
   `cpu_atax` takes `M N` in that order, so `A` is `M x N`. `cpu_mm` is *not* a PolyBench kernel
   (it is the CPU twin of `strela_mm`) and keeps its own default.
 - `strela_*` (`strela_mm`, `strela_fft`, `strela_gesummv_single`, `strela_gemm`, `strela_2mm`,
-  `strela_3mm`, `strela_fir`,
+  `strela_3mm`, `strela_doitgen`, `strela_fir`,
   `strela_fir8`, `strela_relu`, `strela_find2min`, `strela_dither_filter`,
   `strela_fully_connected`, `strela_test`): use the STRELA
   CGRA to offload compute; include pre-generated kernel/bitstream headers (`*_kernel.h`, `*.bin`).
@@ -172,7 +172,8 @@ Two families:
   the kernel header and derive their descriptor tables from it with STRELA's `strela_desc` layer,
   so `gen_data.py` / `gen_descriptors.py` (run by `make gen-app-data`, a prerequisite of `app`)
   regenerate the gitignored `dataset.h` / `descriptors.h` without re-running the mapper.
-  The kernel headers of `strela_fir`, `strela_fir8`, `strela_relu`, `strela_find2min`, both
+  The kernel headers of `strela_fir`, `strela_fir8`, `strela_relu`, `strela_find2min`,
+  `strela_doitgen`, both
   halves of `strela_gemm` and every phase of `strela_2mm` / `strela_3mm` come from the committed
   regress bitstreams via `scripts/regress2kernel.py`, not from a mapper run;
   `strela_dither_filter` has no regress entry, so its header came from a real (few-minute) Gurobi
@@ -225,10 +226,27 @@ Two families:
   just the final result, because in a chain that is what places a failure.
   `strela_2mm` defaults to PolyBench 2mm `SMALL_DATASET` (40/50/70/80) and `strela_3mm` to
   PolyBench 3mm `SMALL_DATASET` (40/50/60/70/80), the same shape as `cpu_threemm`.
+  `strela_doitgen` is the opposite lesson — a kernel that *looks* like it needs more than a matmul
+  and does not. PolyBench doitgen contracts a 3-D tensor against a 2-D matrix
+  (`sum[r][q][p] = SUM_s A[r][q][s]*C4[s][p]`), but the `r` and `q` loops are independent and only
+  ever address whole rows of the last axis, and `A` is row-major — so the `NR x NQ x NP` tensor
+  *is* an `(NR*NQ) x NP` matrix in memory, and the app is one single-phase matmul against the
+  square `C4`, with `doitgen_hv` again byte-identical to `mm_hv`. The tensor rank never reaches
+  the descriptors; only the *product* `NR*NQ` has to be a multiple of the fabric's 4 rows, so
+  either dimension alone may be odd. Because `C4` is square, the reduction length and the tiled
+  column count are both `NP`. It defaults to PolyBench doitgen `SMALL_DATASET` (25/20/30).
+  It is also the app that shows where **descriptor-table fetch** starts to dominate: measured
+  `TOT` 97059 with `TAB` 79655, i.e. 82% of the run spent fetching descriptors, against 57% for
+  `strela_2mm` and 55% for `strela_3mm`. The shape explains it — a row-stream descriptor moves
+  `K` words for a fixed 12-byte fetch, and doitgen's `K` is `NP` = 30 against 50–80 in the other
+  two, while flattening `NR*NQ` into 125 row groups makes the table long (~11k descriptors). Short
+  reduction lengths are what make that ratio bite; it is not a correctness issue, but it is the
+  first thing to look at before reading a low `TOT` as a fabric problem.
 
 **Two size limits that are not obvious from the descriptor ISA**, both hit when scaling these
 apps past their original toy shapes:
-- `strela_mm`, `strela_gemm`'s phase 0 and every matmul phase of `strela_2mm` / `strela_3mm`
+- `strela_mm`, `strela_doitgen`, `strela_gemm`'s phase 0 and every matmul phase of
+  `strela_2mm` / `strela_3mm`
   split each B column pair into chunks of at most
   `gen_descriptors.MAX_GROUPS` (8) A row groups, one pass each, rather than one pass over all
   `M/4`. Past a shape-dependent number of row groups per pass the run deadlocks with exactly one
@@ -240,9 +258,9 @@ apps past their original toy shapes:
   the OSE waits forever. The boundary moves with the number of B columns (the OSE write stride,
   hence how fast obione's FIFO drains): measured 13 groups fine / 14 hanging at `NJ`=70 in gemm,
   but 11 fine / 12 hanging at `N`=8 in mm. It is a race — chunking is a margin, not a proof, and
-  the real fix belongs in `strela_memory.sv`. Because `mm_hv`, `gemm_1_hv`, `2mm_1_hv` and
-  `3mm_hv` are all the same solve (byte-identical bitstream and io_map), the four apps'
-  `MAX_GROUPS` must stay in step. Without
+  the real fix belongs in `strela_memory.sv`. Because `mm_hv`, `gemm_1_hv`, `2mm_1_hv`,
+  `3mm_hv` and `doitgen_hv` are all the same solve (byte-identical bitstream and io_map), the five
+  apps' `MAX_GROUPS` must stay in step. Without
   the chunking `strela_mm` at its 64x64x64 default (16 row groups) hangs, while 8x8x8 (2 groups)
   passes.
 - `strela_gesummv_single` preloads whole *blocks of rows* of A and B into the 512-word
