@@ -1,0 +1,152 @@
+{
+  "inputs": {
+    "input1": {
+      "channel": 9,
+      "location": [
+        "bus",
+        0,
+        "ver_ise"
+      ],
+      "address": "0x20C",
+      "stride": 4,
+      "size": 3
+    },
+    "input0": {
+      "channel": 11,
+      "location": [
+        "bus",
+        1,
+        "ver_ise"
+      ],
+      "address": "0x200",
+      "stride": 4,
+      "size": 3
+    },
+    "input3": {
+      "channel": 13,
+      "location": [
+        "bus",
+        2,
+        "ver_ise"
+      ],
+      "address": "0x218",
+      "stride": 4,
+      "size": 3
+    },
+    "input2": {
+      "channel": 15,
+      "location": [
+        "bus",
+        3,
+        "ver_ise"
+      ],
+      "address": "0x218",
+      "stride": 4,
+      "size": 3
+    },
+    "input5": {
+      "channel": 17,
+      "location": [
+        "bus",
+        0,
+        "hor_east"
+      ],
+      "address": "0x300",
+      "stride": 4,
+      "size": 3
+    },
+    "input4": {
+      "channel": 21,
+      "location": [
+        "bus",
+        2,
+        "hor_east"
+      ],
+      "address": "0x300",
+      "stride": 4,
+      "size": 3
+    }
+  },
+  "outputs": {
+    "output5": {
+      "channel": 0,
+      "location": [
+        "pe",
+        0,
+        "west"
+      ],
+      "address": "0x400",
+      "size": 1
+    },
+    "output7": {
+      "channel": 3,
+      "location": [
+        "bus",
+        1,
+        "hor_west"
+      ],
+      "address": "0x400",
+      "size": 1
+    },
+    "output4": {
+      "channel": 4,
+      "location": [
+        "pe",
+        8,
+        "west"
+      ],
+      "address": "0x400",
+      "size": 1
+    },
+    "output1": {
+      "channel": 8,
+      "location": [
+        "pe",
+        12,
+        "south"
+      ],
+      "address": "0x400",
+      "size": 1
+    },
+    "output0": {
+      "channel": 10,
+      "location": [
+        "pe",
+        13,
+        "south"
+      ],
+      "address": "0x400",
+      "size": 1
+    },
+    "output3": {
+      "channel": 12,
+      "location": [
+        "pe",
+        14,
+        "south"
+      ],
+      "address": "0x400",
+      "size": 1
+    },
+    "output2": {
+      "channel": 16,
+      "location": [
+        "pe",
+        15,
+        "east"
+      ],
+      "address": "0x400",
+      "size": 1
+    },
+    "output6": {
+      "channel": 20,
+      "location": [
+        "pe",
+        7,
+        "east"
+      ],
+      "address": "0x400",
+      "size": 1
+    }
+  }
+}

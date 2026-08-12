@@ -162,7 +162,8 @@ Two families:
   arguments (`python3 gen_data.py <dims...>`) to override. They are rectangular, not square:
   `cpu_atax` takes `M N` in that order, so `A` is `M x N`. `cpu_mm` is *not* a PolyBench kernel
   (it is the CPU twin of `strela_mm`) and keeps its own default.
-- `strela_*` (`strela_mm`, `strela_fft`, `strela_gesummv_single`, `strela_gemm`, `strela_fir`,
+- `strela_*` (`strela_mm`, `strela_fft`, `strela_gesummv_single`, `strela_gemm`, `strela_2mm`,
+  `strela_3mm`, `strela_fir`,
   `strela_fir8`, `strela_relu`, `strela_find2min`, `strela_dither_filter`,
   `strela_fully_connected`, `strela_test`): use the STRELA
   CGRA to offload compute; include pre-generated kernel/bitstream headers (`*_kernel.h`, `*.bin`).
@@ -171,9 +172,9 @@ Two families:
   the kernel header and derive their descriptor tables from it with STRELA's `strela_desc` layer,
   so `gen_data.py` / `gen_descriptors.py` (run by `make gen-app-data`, a prerequisite of `app`)
   regenerate the gitignored `dataset.h` / `descriptors.h` without re-running the mapper.
-  The kernel headers of `strela_fir`, `strela_fir8`, `strela_relu`, `strela_find2min` and both
-  halves of `strela_gemm` come from the committed regress bitstreams via
-  `scripts/regress2kernel.py`, not from a mapper run;
+  The kernel headers of `strela_fir`, `strela_fir8`, `strela_relu`, `strela_find2min`, both
+  halves of `strela_gemm` and every phase of `strela_2mm` / `strela_3mm` come from the committed
+  regress bitstreams via `scripts/regress2kernel.py`, not from a mapper run;
   `strela_dither_filter` has no regress entry, so its header came from a real (few-minute) Gurobi
   solve of `mapper/applications/dither_filter`.
   Between them these five cover the four descriptor shapes worth copying: `strela_fir` /
@@ -190,7 +191,7 @@ Two families:
   cycles for 256 pixels, i.e. 10.2 cycles/pixel against the ~1 a feed-forward kernel reaches.
   It is the app to copy for a sequential scan, and the one to read before assuming a STRELA
   kernel is input-bound.
-  `strela_gemm` is the fifth shape and the only **chained** app: PolyBench gemm split over two
+  `strela_gemm` is the fifth shape and the simplest **chained** app: PolyBench gemm split over two
   bitstreams that run back to back in one execution — `gemm_1_hv` (byte-identical to `mm_hv`, so
   phase 0 is `strela_mm`'s schedule writing a temporary `matAB`) and then `gemm_2_hv`
   (`matD = alpha*matAB + beta*matC`, two lanes over halves of the flat array, alpha/beta patched
@@ -202,10 +203,33 @@ Two families:
   second io_map, since port names belong to a DFG), and `validate()` rejects a phase that is not
   preceded by a `FENCE_SE`. Copy it for any kernel too big for one fabric configuration.
   It defaults to PolyBench gemm `SMALL_DATASET` (60x70x80).
+  `strela_2mm` and `strela_3mm` are the same chained shape carried to **three** phases, and are
+  the apps to read for a kernel that reuses one bitstream at different reduction lengths.
+  `2mm_1_hv` and `3mm_hv` are byte-identical to `mm_hv`, so every matmul phase is `strela_mm`'s
+  schedule, factored out as a `matmul_phase()` helper in each `gen_descriptors.py`:
+  `strela_2mm` runs `matAB = matA*matB`, then `matABC = matAB*matC`, then `2mm_2_hv`
+  (byte-identical to `gemm_2_hv`) for `matD = alpha*matABC + beta*matDin` — PolyBench folds alpha
+  into the first product, but alpha is a scalar, so pulling it into the last kernel leaves both
+  matmul phases running the unmodified bitstream. `strela_3mm` runs `matE = matA*matB`,
+  `matF = matC*matD`, `matG = matE*matF`. The non-obvious part is that **each matmul phase needs
+  its own copy of the bitstream in RAM**: `delay_value` *is* the reduction length, the three
+  products reduce over different dimensions, and `set_pe_delay_value()` patches an array before
+  `TR_CONF` reads it — so the phases cannot share one config load even though the bits are the
+  same. `scripts/regress2kernel.py --array-name` is what emits those copies
+  (`mm_ab_kernel` / `mm_abc_kernel`, `mm_e_kernel` / `mm_f_kernel` / `mm_g_kernel`); the io_map is
+  per-DFG, so one committed copy is shared by all phases that use it.
+  A second wrinkle in `strela_3mm`: one pass consumes four rows of the left operand, and phase 1's
+  left operand `matC` has `NJ` rows (50), which is not a multiple of 4 — so `matC` and `matF` are
+  allocated with `NJ_PAD` (52) rows, the added rows of `matC` are zeroed, and phase 2 reduces over
+  the first `NJ` rows of `matF` only. Both apps check every intermediate against its golden, not
+  just the final result, because in a chain that is what places a failure.
+  `strela_2mm` defaults to PolyBench 2mm `SMALL_DATASET` (40/50/70/80) and `strela_3mm` to
+  PolyBench 3mm `SMALL_DATASET` (40/50/60/70/80), the same shape as `cpu_threemm`.
 
 **Two size limits that are not obvious from the descriptor ISA**, both hit when scaling these
 apps past their original toy shapes:
-- `strela_mm` and `strela_gemm`'s phase 0 both split each B column pair into chunks of at most
+- `strela_mm`, `strela_gemm`'s phase 0 and every matmul phase of `strela_2mm` / `strela_3mm`
+  split each B column pair into chunks of at most
   `gen_descriptors.MAX_GROUPS` (8) A row groups, one pass each, rather than one pass over all
   `M/4`. Past a shape-dependent number of row groups per pass the run deadlocks with exactly one
   element of the product unwritten, always the last word of `output7`. `output7` is the only
@@ -216,8 +240,9 @@ apps past their original toy shapes:
   the OSE waits forever. The boundary moves with the number of B columns (the OSE write stride,
   hence how fast obione's FIFO drains): measured 13 groups fine / 14 hanging at `NJ`=70 in gemm,
   but 11 fine / 12 hanging at `N`=8 in mm. It is a race — chunking is a margin, not a proof, and
-  the real fix belongs in `strela_memory.sv`. Because `mm_hv` and `gemm_1_hv` are the same solve
-  (byte-identical bitstream and io_map), the two apps' `MAX_GROUPS` must stay in step. Without
+  the real fix belongs in `strela_memory.sv`. Because `mm_hv`, `gemm_1_hv`, `2mm_1_hv` and
+  `3mm_hv` are all the same solve (byte-identical bitstream and io_map), the four apps'
+  `MAX_GROUPS` must stay in step. Without
   the chunking `strela_mm` at its 64x64x64 default (16 row groups) hangs, while 8x8x8 (2 groups)
   passes.
 - `strela_gesummv_single` preloads whole *blocks of rows* of A and B into the 512-word
