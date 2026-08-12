@@ -25,7 +25,9 @@ port means:
     output[j + 4*b]  = A_row(input_j) . B_col(input_{4+b})
 
 so one pass of the fabric computes a 4x2 tile of C. The tables loop over the
-N/2 column pairs of B and, inside each, over the M/4 row groups of A.
+N/2 column pairs of B and, inside each, over the M/4 row groups of A -- in
+chunks of at most MAX_GROUPS row groups, one pass each, because a longer pass
+trips the strela_memory.sv race described at MAX_GROUPS below.
 """
 
 import argparse
@@ -48,8 +50,33 @@ DTYPE_INFO = {
 ROWS = 4          # the STRELA shell hard-codes a 4x4 fabric
 TILE_COLS = 2     # B columns resident in scratchpads per pass
 
+# Row groups handled by a single pass: the ISE scratchpad replay count, and the
+# number of results each OSE-side scratchpad buffers before it is drained.
+#
+# This is a workaround for a hardware race, not a modelling choice. `output7` --
+# the only output of this kernel that reaches its scratchpad over a router's
+# horizontal bus (MEM_W1 in mode 1, see mm_hv_io_map.json; the other four
+# scratchpad outputs are mode 0 PE-border ports) -- loses the *last* word of its
+# drain once the drain is long enough for the OSE's obione FIFO to fill. In
+# rtl/strela_memory.sv the `valid_out` register that presents that word is
+# shared between the two directions, and the S_IDLE arm of its update guard
+# accepts either of them, so while the FSM sits in S_IDLE with the last word
+# pending, a `hor_ready_i` from the fabric side clears it before the OSE's
+# `ose_ready_i` takes it. The OSE then waits forever for its last element: the
+# run hangs in that pass with exactly one element of matC unwritten.
+#
+# strela_gemm hits exactly the same race -- gemm_1_hv is byte-identical to
+# mm_hv, the same solve -- and its MAX_GROUPS comment records the Verilator
+# sweep: 13 groups per pass are fine at K = 16, 56, 64 and 400; 14 hang at
+# K = 16, 56 and 64. N moves the boundary too, since it sets the OSE's write
+# stride and therefore how fast that FIFO drains, so this is a race rather than
+# a clean depth, and 8 is a margin rather than a proof. Keep the two apps'
+# values in step; the real fix belongs in strela_memory.sv.
+MAX_GROUPS = 8
 
-def build(m, k, n, in_sew, in_bytes, acc_sew, acc_bytes, io_map):
+
+def build(m, k, n, in_sew, in_bytes, acc_sew, acc_bytes, io_map,
+          max_groups=MAX_GROUPS):
     prog = StreamProgram(
         io_map=io_map,
         kernel="matmul_kernel",
@@ -69,23 +96,31 @@ def build(m, k, n, in_sew, in_bytes, acc_sew, acc_bytes, io_map):
 
     for pair in range(col_pairs):
         b_cols = (TILE_COLS * pair, TILE_COLS * pair + 1)
-        with prog:
-            # Preload the two B columns; each is replayed once per row group.
-            for b, col in enumerate(b_cols):
-                prog.mem(f"input{4 + b}", "matB", col,
-                         stride=n * in_bytes, count=k, size=k, iters=row_groups)
+        # A column pair is walked in chunks of at most MAX_GROUPS row groups;
+        # each chunk is a pass of its own, which re-preloads the two B columns
+        # (k extra reads) and bounds every scratchpad replay.
+        for first in range(0, row_groups, max_groups):
+            groups = min(max_groups, row_groups - first)
+            with prog:
+                # Preload the two B columns; each is replayed once per row group
+                # of this chunk.
+                for b, col in enumerate(b_cols):
+                    prog.mem(f"input{4 + b}", "matB", col,
+                             stride=n * in_bytes, count=k, size=k, iters=groups)
 
-            # Stream the A rows: ISE carrying input_j gets rows j, j+4, ...
-            for j in range(ROWS):
-                for group in range(row_groups):
-                    prog.stream(f"input{j}", "matA", (ROWS * group + j) * k,
-                                stride=in_bytes, count=k)
-
-            # One descriptor per output walks the row groups, ROWS rows apart.
-            for b, col in enumerate(b_cols):
+                # Stream the A rows: ISE carrying input_j gets rows j, j+4, ...
                 for j in range(ROWS):
-                    prog.out(f"output{j + ROWS * b}", "matC", j * n + col,
-                             stride=ROWS * n * acc_bytes, count=row_groups)
+                    for group in range(first, first + groups):
+                        prog.stream(f"input{j}", "matA", (ROWS * group + j) * k,
+                                    stride=in_bytes, count=k)
+
+                # One descriptor per output walks the chunk's row groups,
+                # ROWS rows apart.
+                for b, col in enumerate(b_cols):
+                    for j in range(ROWS):
+                        prog.out(f"output{j + ROWS * b}", "matC",
+                                 (ROWS * first + j) * n + col,
+                                 stride=ROWS * n * acc_bytes, count=groups)
     return prog
 
 
@@ -102,11 +137,15 @@ SEW selection:
 """,
     )
     parser.add_argument("M", type=int, nargs="?", default=64,
-                        help="rows of A and C (default: 8)")
+                        help="rows of A and C (default: 64)")
     parser.add_argument("K", type=int, nargs="?", default=64,
-                        help="cols of A / rows of B (default: 8)")
+                        help="cols of A / rows of B (default: 64)")
     parser.add_argument("N", type=int, nargs="?", default=64,
-                        help="cols of B and C (default: 8)")
+                        help="cols of B and C (default: 64)")
+    parser.add_argument("--max-groups", type=int, default=MAX_GROUPS,
+                        metavar="G",
+                        help=f"row groups per pass (default: {MAX_GROUPS}); "
+                             "see MAX_GROUPS for why this is capped")
     parser.add_argument("--io-map", default=os.path.join(_HERE, "mm_hv_io_map.json"),
                         help="io_map.json from map-bitstream "
                              "(default: the copy committed next to matmul.h)")
@@ -123,6 +162,13 @@ SEW selection:
     m, k, n = args.M, args.K, args.N
     if m % ROWS or n % TILE_COLS:
         raise SystemExit(f"M must be a multiple of {ROWS} and N of {TILE_COLS}")
+    # validate() catches these too, but fail here with the knob to turn.
+    if k > 511:
+        raise SystemExit(f"K={k} exceeds the 512-word scratchpad (a B column)")
+    if not 1 <= args.max_groups <= 255:
+        raise SystemExit(f"--max-groups={args.max_groups}: a pass replays the "
+                         "scratchpad that many times, which must fit the 8-bit "
+                         "iters field")
 
     info = DTYPE_INFO[args.dtype]
     in_sew, in_bytes = info["sew"], info["sew"] // 8
@@ -131,7 +177,8 @@ SEW selection:
     else:
         acc_sew, acc_ctype = in_sew, info["ctype"]
 
-    prog = build(m, k, n, in_sew, in_bytes, acc_sew, acc_sew // 8, args.io_map)
+    prog = build(m, k, n, in_sew, in_bytes, acc_sew, acc_sew // 8, args.io_map,
+                 args.max_groups)
     prog.validate()
 
     note = (f"dtype={args.dtype}, mode={args.mode}: ISE SEW={in_sew}, "

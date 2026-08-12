@@ -205,17 +205,21 @@ Two families:
 
 **Two size limits that are not obvious from the descriptor ISA**, both hit when scaling these
 apps past their original toy shapes:
-- `strela_gemm`'s phase 0 splits each matB column pair into chunks of at most
-  `gen_descriptors.MAX_GROUPS` (8) matA row groups, one pass each, rather than one pass over all
-  `NI/4`. Past ~13 row groups per pass the run deadlocks with exactly one element of `matAB`
-  unwritten, always the last word of `output7`. `output7` is the only gemm_1_hv output whose
-  scratchpad is reached over a router's horizontal bus (`MEM_W1`, mode 1); in
-  `rtl/strela_memory.sv` the `valid_out` register presenting a word is shared between the
-  fabric-write and OSE-read directions, and its `S_IDLE` update guard accepts either, so a
+- `strela_mm` and `strela_gemm`'s phase 0 both split each B column pair into chunks of at most
+  `gen_descriptors.MAX_GROUPS` (8) A row groups, one pass each, rather than one pass over all
+  `M/4`. Past a shape-dependent number of row groups per pass the run deadlocks with exactly one
+  element of the product unwritten, always the last word of `output7`. `output7` is the only
+  output of this kernel whose scratchpad is reached over a router's horizontal bus (`MEM_W1`,
+  mode 1); in `rtl/strela_memory.sv` the `valid_out` register presenting a word is shared between
+  the fabric-write and OSE-read directions, and its `S_IDLE` update guard accepts either, so a
   `hor_ready_i` from the fabric can clear the last pending word before `ose_ready_i` takes it and
-  the OSE waits forever. The boundary moves with `NJ` (the OSE write stride, hence how fast
-  obione's FIFO drains), so it is a race: chunking is a margin, and the real fix belongs in
-  `strela_memory.sv`.
+  the OSE waits forever. The boundary moves with the number of B columns (the OSE write stride,
+  hence how fast obione's FIFO drains): measured 13 groups fine / 14 hanging at `NJ`=70 in gemm,
+  but 11 fine / 12 hanging at `N`=8 in mm. It is a race — chunking is a margin, not a proof, and
+  the real fix belongs in `strela_memory.sv`. Because `mm_hv` and `gemm_1_hv` are the same solve
+  (byte-identical bitstream and io_map), the two apps' `MAX_GROUPS` must stay in step. Without
+  the chunking `strela_mm` at its 64x64x64 default (16 row groups) hangs, while 8x8x8 (2 groups)
+  passes.
 - `strela_gesummv_single` preloads whole *blocks of rows* of A and B into the 512-word
   scratchpads, `gen_descriptors.rows_per_pass()` rows at a time, instead of a whole `M/2` half.
   Only one row block has to fit, so `M*N` is no longer capped at 1022 and the app defaults to
