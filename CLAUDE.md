@@ -164,7 +164,7 @@ Two families:
   (it is the CPU twin of `strela_mm`) and keeps its own default.
 - `strela_*` (`strela_mm`, `strela_fft`, `strela_gesummv_single`, `strela_gesummv`,
   `strela_gemm`, `strela_2mm`,
-  `strela_3mm`, `strela_doitgen`, `strela_fir`,
+  `strela_3mm`, `strela_doitgen`, `strela_atax`, `strela_bicg`, `strela_mvt`, `strela_fir`,
   `strela_fir8`, `strela_relu`, `strela_find2min`, `strela_dither_filter`,
   `strela_fully_connected`, `strela_test`): use the STRELA
   CGRA to offload compute; include pre-generated kernel/bitstream headers (`*_kernel.h`, `*.bin`).
@@ -175,7 +175,8 @@ Two families:
   regenerate the gitignored `dataset.h` / `descriptors.h` without re-running the mapper.
   The kernel headers of `strela_fir`, `strela_fir8`, `strela_relu`, `strela_find2min`,
   `strela_doitgen`, both
-  halves of `strela_gemm` and of `strela_gesummv`, and every phase of `strela_2mm` / `strela_3mm`
+  halves of `strela_gemm`, of `strela_gesummv`, of `strela_atax`, of `strela_bicg` and of
+  `strela_mvt`, and every phase of `strela_2mm` / `strela_3mm`
   come from the committed
   regress bitstreams via `scripts/regress2kernel.py`, not from a mapper run;
   `strela_dither_filter` has no regress entry, so its header came from a real (few-minute) Gurobi
@@ -267,6 +268,45 @@ Two families:
   `strela_gesummv_single` and `cpu_gesummv` — the three are directly comparable, and the older
   `strela_gesummv_single` does the whole thing in one fused bitstream with A and B row blocks in
   scratchpads instead.
+  `strela_atax`, `strela_bicg` and `strela_mvt` are the **transpose trio** and are best read
+  together: all three compute the same pair of products over one matrix, `A@u` and `A^T@v`, and
+  all three run the same committed bitstream — `atax_hv`, `bicg_hv` and `mvt_1_hv` are
+  byte-identical, a *different* solve from `gesummv_1_hv` in which the vector lands straight on
+  router 0's horizontal bus instead of passing through a constant-multiply PE, so PEs 4-7 are the
+  accumulators and there is no PE constant to patch at all. The lesson they exist to make is that
+  **transposing costs a stride, not a pass**: a line of `A^T` is a column of `A`, a descriptor
+  already carries an arbitrary stride, and so the transposed product differs from the forward one
+  only in `stride=ELEM, count=N` becoming `stride=N*ELEM, count=M`. `A` is never rearranged in
+  memory and there is no transpose kernel. What it *does* cost is span — a column descriptor
+  reaches across the whole matrix, so its byte count is `M*N*4` rather than `N*4`, and the 16-bit
+  byte count caps that at 65535 (PolyBench SMALL sits at 57536, close). `stream_line()` therefore
+  splits a line across several back-to-back descriptors on the same channel when it has to, which
+  works because a lane accumulator counts *tokens*, not descriptors (verified in simulation at a
+  forced 64-byte cap, `--max-stream-bytes`); the real per-dimension cap is the 511-word scratchpad
+  holding the replayed vector.
+  Where the three differ is a clean three-way answer to **what forces a phase**. `strela_mvt`
+  (PolyBench mvt `SMALL_DATASET`, 120x120, the same shape as `cpu_mvt`) has a **square** `A`, so
+  `A@y_1` and `A^T@y_2` reduce over the same `N` and share **one** loaded configuration — the
+  transposed product is just more passes at a different stride — giving two phases for three
+  operations, the second being `mvt_2_hv`, a plain two-lane add (`x1 = x1_in + t1`,
+  `x2 = x2_in + t2`) with neither constants nor accumulators, so nothing in that bitstream is
+  patched at all. `strela_atax` (116x124, the same shape as `cpu_atax`) has a **rectangular** `A`,
+  so `tmp = A@x` reduces over `N` and `y = A^T@tmp` over `M`; `delay_value` *is* the reduction
+  length and it lives in the bitstream, so the identical pair of products now needs one patched
+  copy each and two phases — and it is a true chain, `tmp` being written by phase 0's OSEs and
+  preloaded into phase 1's scratchpad. `strela_bicg` (`A` is 124x116, `M`=116/`N`=124 as in
+  PolyBench, which is why its two positional arguments are `M N` but `A` is `N x M`) runs the same
+  rectangular pair, but its two products are **independent** — `q = A@p` and `s = A^T@r`, neither
+  consuming the other — and still needs two phases. That is the sharpest form of the rule
+  `strela_gesummv` states: what splits a run into phases is a change of configuration, not a data
+  dependence and not a direction. Measured `TOT` 8340 for both `strela_atax` and `strela_bicg`
+  (identical, because the same `2*116*124` elements cross the fabric either way) with `TAB` ~26%
+  and `STL` ~4%, and 8615 for `strela_mvt`. All three pad both dimensions up to a multiple of 4
+  with zeroed rows/columns and compute the goldens over the padding, and none of the five
+  bitstreams has a scratchpad-backed output, so all three are free of the `MAX_GROUPS` race below
+  and one pass covers the whole matrix. One data-generation trap worth copying from
+  `strela_atax`: it reduces *twice*, so its worst case grows as `M*N*range^3` and its default
+  `--range` is 40 where the single-reduction apps use 100.
 
 **Two size limits that are not obvious from the descriptor ISA**, both hit when scaling these
 apps past their original toy shapes:

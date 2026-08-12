@@ -1,0 +1,101 @@
+{
+  "inputs": {
+    "input4": {
+      "channel": 7,
+      "location": [
+        "bus",
+        0,
+        "hor_west"
+      ],
+      "address": "0x300",
+      "stride": 4,
+      "size": 3
+    },
+    "input3": {
+      "channel": 8,
+      "location": [
+        "pe",
+        0,
+        "north"
+      ],
+      "address": "0x300",
+      "stride": 4,
+      "size": 3
+    },
+    "input1": {
+      "channel": 10,
+      "location": [
+        "pe",
+        1,
+        "north"
+      ],
+      "address": "0x20C",
+      "stride": 4,
+      "size": 3
+    },
+    "input2": {
+      "channel": 12,
+      "location": [
+        "pe",
+        2,
+        "north"
+      ],
+      "address": "0x218",
+      "stride": 4,
+      "size": 3
+    },
+    "input0": {
+      "channel": 14,
+      "location": [
+        "pe",
+        3,
+        "north"
+      ],
+      "address": "0x200",
+      "stride": 4,
+      "size": 3
+    }
+  },
+  "outputs": {
+    "output3": {
+      "channel": 9,
+      "location": [
+        "bus",
+        0,
+        "ver_ose"
+      ],
+      "address": "0x408",
+      "size": 1
+    },
+    "output1": {
+      "channel": 11,
+      "location": [
+        "bus",
+        1,
+        "ver_ose"
+      ],
+      "address": "0x404",
+      "size": 1
+    },
+    "output2": {
+      "channel": 13,
+      "location": [
+        "bus",
+        2,
+        "ver_ose"
+      ],
+      "address": "0x408",
+      "size": 1
+    },
+    "output0": {
+      "channel": 15,
+      "location": [
+        "bus",
+        3,
+        "ver_ose"
+      ],
+      "address": "0x400",
+      "size": 1
+    }
+  }
+}
