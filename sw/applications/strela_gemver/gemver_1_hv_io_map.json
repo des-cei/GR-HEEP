@@ -1,0 +1,114 @@
+{
+  "inputs": {
+    "input4": {
+      "channel": 2,
+      "location": [
+        "pe",
+        8,
+        "west"
+      ],
+      "address": "0x400",
+      "stride": 4,
+      "size": 100
+    },
+    "input2": {
+      "channel": 6,
+      "location": [
+        "pe",
+        0,
+        "west"
+      ],
+      "address": "0x400",
+      "stride": 4,
+      "size": 100
+    },
+    "input0": {
+      "channel": 10,
+      "location": [
+        "pe",
+        1,
+        "north"
+      ],
+      "address": "0x200",
+      "stride": 4,
+      "size": 100
+    },
+    "input1": {
+      "channel": 12,
+      "location": [
+        "pe",
+        2,
+        "north"
+      ],
+      "address": "0x300",
+      "stride": 4,
+      "size": 100
+    },
+    "input6": {
+      "channel": 17,
+      "location": [
+        "bus",
+        0,
+        "hor_east"
+      ],
+      "address": "0x400",
+      "stride": 4,
+      "size": 100
+    },
+    "input3": {
+      "channel": 18,
+      "location": [
+        "pe",
+        7,
+        "east"
+      ],
+      "address": "0x500",
+      "stride": 4,
+      "size": 100
+    },
+    "input7": {
+      "channel": 21,
+      "location": [
+        "bus",
+        2,
+        "hor_east"
+      ],
+      "address": "0x500",
+      "stride": 4,
+      "size": 100
+    },
+    "input5": {
+      "channel": 22,
+      "location": [
+        "pe",
+        15,
+        "east"
+      ],
+      "address": "0x500",
+      "stride": 4,
+      "size": 100
+    }
+  },
+  "outputs": {
+    "output0": {
+      "channel": 11,
+      "location": [
+        "bus",
+        1,
+        "ver_ose"
+      ],
+      "address": "0x600",
+      "size": 100
+    },
+    "output1": {
+      "channel": 13,
+      "location": [
+        "bus",
+        2,
+        "ver_ose"
+      ],
+      "address": "0x700",
+      "size": 100
+    }
+  }
+}

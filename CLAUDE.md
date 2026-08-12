@@ -163,7 +163,7 @@ Two families:
   `cpu_atax` takes `M N` in that order, so `A` is `M x N`. `cpu_mm` is *not* a PolyBench kernel
   (it is the CPU twin of `strela_mm`) and keeps its own default.
 - `strela_*` (`strela_mm`, `strela_fft`, `strela_gesummv_single`, `strela_gesummv`,
-  `strela_gemm`, `strela_2mm`,
+  `strela_gemm`, `strela_gemver`, `strela_2mm`,
   `strela_3mm`, `strela_doitgen`, `strela_atax`, `strela_bicg`, `strela_mvt`, `strela_fir`,
   `strela_fir8`, `strela_relu`, `strela_find2min`, `strela_dither_filter`,
   `strela_fully_connected`, `strela_test`): use the STRELA
@@ -176,7 +176,7 @@ Two families:
   The kernel headers of `strela_fir`, `strela_fir8`, `strela_relu`, `strela_find2min`,
   `strela_doitgen`, both
   halves of `strela_gemm`, of `strela_gesummv`, of `strela_atax`, of `strela_bicg` and of
-  `strela_mvt`, and every phase of `strela_2mm` / `strela_3mm`
+  `strela_mvt`, and every phase of `strela_2mm` / `strela_3mm` / `strela_gemver`
   come from the committed
   regress bitstreams via `scripts/regress2kernel.py`, not from a mapper run;
   `strela_dither_filter` has no regress entry, so its header came from a real (few-minute) Gurobi
@@ -307,6 +307,50 @@ Two families:
   and one pass covers the whole matrix. One data-generation trap worth copying from
   `strela_atax`: it reduces *twice*, so its worst case grows as `M*N*range^3` and its default
   `--range` is 40 where the single-reduction apps use 100.
+  `strela_gemver` is PolyBench gemver's four statements as **four** phases, the deepest chain here,
+  and it completes the answer to *what forces a phase*. Its two matrix-vector phases
+  (`vec_tmp = beta*(A2^T@y)` and `vec_w = alpha*(A2@x)`) run the same bitstream over the same
+  **square** matrix, so they reduce over the same `N` — neither `strela_atax`'s differing
+  `delay_value` nor `strela_gesummv`'s "same configuration, more passes" applies — and they still
+  need two loaded copies (`matvec_beta_kernel`, `matvec_alpha_kernel`, `--array-name` again),
+  because the scalar each folds into its replayed vector is a **PE constant**, and a constant lives
+  in the bitstream exactly like a delay_value does. So the rule is neither about lengths nor
+  operands: **a phase is a configuration, and a constant is part of one.** `strela_gesummv` escapes
+  this by pushing alpha/beta into a later scale-and-add kernel; gemver cannot, because its only
+  other kernel is a plain add with no constants at all and beta has to be applied before `z` is.
+  The other three phases are proven ground — `gemver_2_hv` is byte-identical to `gesummv_1_hv` and
+  `gemver_3_hv` to `mvt_2_hv`, same io_map locations — so the new work is all in phase 0.
+  That phase, `gemver_1_hv` (`A2 = A + u1*v1^T + u2*v2^T`), is the app to read for **an operand
+  that is constant along the streamed line**. Its two lanes take one matrix row each, and its eight
+  inputs split into two kinds: `input6`/`input7` land on the horizontal buses of rows 0 and 2 and
+  fork one token to *both* lanes, while `input2`..`input5` are per-lane PE scratchpads. Since a
+  scratchpad replays a fixed block a whole number of times, an operand varying along the row and
+  one constant along it cannot both be replayed for more than one line per pass — `[u1[i0] x N,
+  u1[i0+1] x N, ...]` is a run-length pattern and not a repeat of anything. Hence v1/v2 on the
+  shared buses (`size=N, iters=1`), the u entries in the per-lane scratchpads as one word replayed
+  once per element (`size=1, iters=N`), and **one row per lane per pass**: 60 fenced two-row passes
+  at `N`=120, reloading v1/v2 each time. That costs one extra word of scratchpad traffic per element
+  updated; the mirror-image schedule, per-lane halves of v with the u scalars on the buses, reloads
+  twice as much to update half as much. It also brings a descriptor limit no other app hits: the
+  replay count *is* the row length, so `N` is capped at **255** by the 8-bit `iters` field, where
+  everywhere else `iters` counts row groups. `mat_a2` is a separate array rather than a write-back
+  over `mat_a` — the update is elementwise, so in place would in fact be safe, but within a pass the
+  ISE reading an element and the OSE writing it are not ordered, and a separate destination keeps
+  that argument out of the app.
+  Two more things gemver is the first app to hit. It multiplies **three** deep (a rank-2 update
+  feeding two chained matrix-vector products), so its worst case grows as
+  `N^2 * range^5 * (1+2*range)^2` and the default `--range` is **4** at `N`=120, against 40 for
+  `strela_atax` and 100 for the single-reduction apps; the guard is worst-case and shape-only on
+  purpose, because CI runs `gen_data.py` with no arguments and a range that only *usually* fits
+  would be a flaky build. And it is what exposed a gap in `strela_desc.validate()`: port names
+  belong to a DFG, so a chained program reuses `input2` for an unrelated channel of the next
+  bitstream — and for an unrelated *kind*, a scratchpad in phase 0 and a north stream in the matvec
+  phases — and the mode check resolved every descriptor against the last io_map loaded rather than
+  its own phase, reporting 120 mismatches on a correct schedule. It now resolves per phase, the way
+  the port-coverage check already did (a STRELA submodule change, so it needs a pointer bump).
+  Measured `TOT` 25521 with `CFG` 90, `TAB` 10310 (40%, the price of phase 0's 1392-descriptor
+  table) and `STL` 1351 (5%). It defaults to PolyBench gemver `SMALL_DATASET` (120x120), the same
+  shape as `cpu_gemver`.
 
 **Two size limits that are not obvious from the descriptor ISA**, both hit when scaling these
 apps past their original toy shapes:
