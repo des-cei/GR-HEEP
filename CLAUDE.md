@@ -162,7 +162,8 @@ Two families:
   arguments (`python3 gen_data.py <dims...>`) to override. They are rectangular, not square:
   `cpu_atax` takes `M N` in that order, so `A` is `M x N`. `cpu_mm` is *not* a PolyBench kernel
   (it is the CPU twin of `strela_mm`) and keeps its own default.
-- `strela_*` (`strela_mm`, `strela_fft`, `strela_gesummv_single`, `strela_gemm`, `strela_2mm`,
+- `strela_*` (`strela_mm`, `strela_fft`, `strela_gesummv_single`, `strela_gesummv`,
+  `strela_gemm`, `strela_2mm`,
   `strela_3mm`, `strela_doitgen`, `strela_fir`,
   `strela_fir8`, `strela_relu`, `strela_find2min`, `strela_dither_filter`,
   `strela_fully_connected`, `strela_test`): use the STRELA
@@ -174,7 +175,8 @@ Two families:
   regenerate the gitignored `dataset.h` / `descriptors.h` without re-running the mapper.
   The kernel headers of `strela_fir`, `strela_fir8`, `strela_relu`, `strela_find2min`,
   `strela_doitgen`, both
-  halves of `strela_gemm` and every phase of `strela_2mm` / `strela_3mm` come from the committed
+  halves of `strela_gemm` and of `strela_gesummv`, and every phase of `strela_2mm` / `strela_3mm`
+  come from the committed
   regress bitstreams via `scripts/regress2kernel.py`, not from a mapper run;
   `strela_dither_filter` has no regress entry, so its header came from a real (few-minute) Gurobi
   solve of `mapper/applications/dither_filter`.
@@ -242,6 +244,29 @@ Two families:
   two, while flattening `NR*NQ` into 125 row groups makes the table long (~11k descriptors). Short
   reduction lengths are what make that ratio bite; it is not a correctness issue, but it is the
   first thing to look at before reading a low `TOT` as a fabric problem.
+  `strela_gesummv` is the chained app to read **before** assuming that a second operand needs a
+  second phase. PolyBench gesummv (`y = alpha*A@x + beta*B@x`) has two committed HV bitstreams,
+  `gesummv_1_hv` (four accumulator lanes reducing four matrix rows against an `x` that a constant
+  multiply broadcasts from one scratchpad over the row-0 horizontal bus) and `gesummv_2_hv`
+  (byte-identical to `gemm_2_hv` / `2mm_2_hv`, so the same two-lane scale-and-add) — but the run
+  has only **two** phases for three products, because `A@x` and `B@x` want the *same*
+  configuration: the same reduction length `N` and the same PE constant. Keeping alpha and beta
+  out of the matrix-vector kernel (they are applied once at the end, which is how PolyBench writes
+  it too) is what makes that true, so `B@x` is simply more passes of the bitstream `A@x` already
+  runs under, with one `FENCE_SE` between passes and one loaded copy of `matvec_kernel`. That is
+  the exact counterpoint to `strela_2mm`, where the two matmuls reduce over different lengths and
+  therefore *cannot* share a load: **a phase is a configuration, not an operand.** Two smaller
+  points: `M` is padded up to a multiple of the fabric's 4 lanes (90 -> 92, zeroed rows, goldens
+  computed over the padding so `y` must be exactly 0 there), and no output of either kernel is
+  scratchpad-backed, so this app is free of the `MAX_GROUPS` race below and one pass covers the
+  whole matrix. It is also the counter-example to `strela_doitgen`'s descriptor-fetch problem:
+  measured `TOT` 5139 with `TAB` 1728 (34%) and `STL` 201, because one descriptor here streams a
+  whole `N`=90 row for its fixed 12-byte fetch, and 5139 cycles for 2x92 rows of 90 is within ~25%
+  of the 4140 the four lanes would take at one element per cycle. It defaults to PolyBench
+  gesummv `SMALL_DATASET` (90x90), the same shape as
+  `strela_gesummv_single` and `cpu_gesummv` — the three are directly comparable, and the older
+  `strela_gesummv_single` does the whole thing in one fused bitstream with A and B row blocks in
+  scratchpads instead.
 
 **Two size limits that are not obvious from the descriptor ISA**, both hit when scaling these
 apps past their original toy shapes:
