@@ -165,7 +165,7 @@ Two families:
 - `strela_*` (`strela_mm`, `strela_fft`, `strela_gesummv_single`, `strela_gesummv`,
   `strela_gemm`, `strela_gemver`, `strela_2mm`,
   `strela_3mm`, `strela_doitgen`, `strela_atax`, `strela_bicg`, `strela_mvt`, `strela_fir`,
-  `strela_fir8`, `strela_relu`, `strela_find2min`, `strela_dither_filter`,
+  `strela_fir8`, `strela_relu`, `strela_find2min`, `strela_dither_filter`, `strela_fw`,
   `strela_fully_connected`, `strela_test`): use the STRELA
   CGRA to offload compute; include pre-generated kernel/bitstream headers (`*_kernel.h`, `*.bin`).
   All except `strela_fully_connected` and `strela_test` also commit the
@@ -174,7 +174,7 @@ Two families:
   so `gen_data.py` / `gen_descriptors.py` (run by `make gen-app-data`, a prerequisite of `app`)
   regenerate the gitignored `dataset.h` / `descriptors.h` without re-running the mapper.
   The kernel headers of `strela_fir`, `strela_fir8`, `strela_relu`, `strela_find2min`,
-  `strela_doitgen`, both
+  `strela_doitgen`, `strela_fw`, both
   halves of `strela_gemm`, of `strela_gesummv`, of `strela_atax`, of `strela_bicg` and of
   `strela_mvt`, and every phase of `strela_2mm` / `strela_3mm` / `strela_gemver`
   come from the committed
@@ -351,6 +351,50 @@ Two families:
   Measured `TOT` 25521 with `CFG` 90, `TAB` 10310 (40%, the price of phase 0's 1392-descriptor
   table) and `STL` 1351 (5%). It defaults to PolyBench gemver `SMALL_DATASET` (120x120), the same
   shape as `cpu_gemver`.
+  `strela_fw` is PolyBench floyd-warshall, and it is the **counterpoint to the whole phase
+  discussion above**: `path[i][j] = min(path[i][j], path[i][k] + path[k][j])` swept once per pivot
+  `k`, which is 900 passes at the default shape and yet **one loaded configuration for the entire
+  run**, with `CFG` measured at 24 cycles. A pivot is an *address*, not a bitstream field — it
+  changes which line the descriptors point at and nothing else — so where `strela_atax` needs two
+  copies for two reduction lengths and `strela_gemver` two for two constants, `fw_hv` is loaded
+  once and never patched at all: every one of its PEs reads back `delay_value` 0 and constant 0,
+  there are no `set_pe_*` calls in `main.c`, and there is no accumulator anywhere (`min` is a
+  `sub` -> signed `>0` `cmp` -> `mux` chain per lane, four lanes, one line each, `mux_dout = cin ?
+  din_2 : din_1` picking the candidate exactly when the current value exceeds it). It is the app
+  to read for **a kernel whose cost is sequencing rather than configuration**.
+  Two schedule points. The pivot-column entry `path[i][k]` is *constant along the streamed line*,
+  which is `strela_gemver`'s rank-2-update problem again — only a scratchpad can hold one word and
+  replay it (`size=1, iters=N`), a stream would need stride 0 and hang obione — so it is again
+  **one line per lane per pass**, and again the 8-bit `iters` field caps `N` at 255 because the
+  replay count *is* the line length. The mapper's placement makes lanes 1 and 2 forced (exactly one
+  of their two `via` ports is a scratchpad, so the pivot column must go there) and lanes 0 and 3
+  free; `feed()` reads the kind out of the io_map instead of hard-coding it, so a re-solve that
+  moves a port between a scratchpad and a stream still emits a correct table. And the two buffers
+  **ping-pong**, one pivot each, rather than relaxing in place as PolyBench does: it costs one extra
+  `N_PAD x N` array and buys the removal of the entire in-pass ordering argument, since iteration
+  `k` reads two lines it does not own. That the two are the same answer is a two-line proof —
+  `path[k][j] <- min(path[k][j], path[k][k]+path[k][j])` and `path[i][k] <- min(path[i][k],
+  path[i][k]+path[k][k])` are both identities whenever `path[k][k] >= 0`, so the pivot row and
+  column do not change during their own iteration — which is why the data is PolyBench's own
+  `init_array` rather than the usual random draw: it is non-negative by construction (and
+  structured, mixing short edges with a 999 sentinel, where a uniform random matrix collapses to
+  near-constant minima after one pivot and would pass with the pivot column wired wrong).
+  `gen_data.py` computes the golden *both* ways and asserts they agree, turning that proof into a
+  check on the actual data; it reports how many entries the sweep changes (2476 of 3600 at the
+  default), which is the number to look at before trusting a pass.
+  It is also the first app that is **descriptor-table-size bound**, a limit no other one here hits.
+  The pass count is `N*N/4` and a pass costs 24 descriptors (12 in, 4 out, 8 fence), so the tables
+  grow as `6*N^2` descriptors: 259 KiB at `N`=60 against the **512 KiB interleaved section** the
+  tables and both matrices share, but 2.3 MiB at PolyBench `SMALL_DATASET` (180) — which is
+  comfortably inside every descriptor-ISA limit and still cannot be built. So it defaults to
+  floyd-warshall **`MINI_DATASET` (60x60)**, the only app here not on `SMALL`, and
+  `gen_descriptors.py` reports the real byte count rather than letting the link fail. Measured
+  `TOT` 423294 with `CFG` 24, `TAB` 162797 (38%) and `STL` 33986 (8%), against a ~108k streaming
+  bound — the gap is the 900 `FENCE_SE` barriers, which is the price of `k` being sequential, and
+  the `TAB` share sits between `strela_gesummv`'s 34% and `strela_doitgen`'s 82% for the same
+  reason as both: a 60-element line per fixed 12-byte descriptor fetch, with a third of each ISE
+  table being fences. At ~500k simulated cycles it is **the slowest app in the suite** (about four
+  minutes under Verilator, ~3x `strela_doitgen`), so lower `N` if `make test` needs to be quicker.
 
 **Two size limits that are not obvious from the descriptor ISA**, both hit when scaling these
 apps past their original toy shapes:
