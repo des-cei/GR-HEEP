@@ -92,23 +92,30 @@ format-python:
 ## @section RTL & SW generation
 
 ## Regenerate PROJECT's generated headers (dataset.h, descriptors.h)
+## @param GEN_DATA_ARGS arguments for gen_data.py (default: none, i.e. the app's
+##        own default shape)
+## @param GEN_DESC_ARGS arguments for gen_descriptors.py (same)
 ## @note dataset.h and descriptors.h are gitignored, so a clean checkout has
 ## neither and the app cannot compile until they are produced. Every generator
-## runs with no arguments (each script defaults to its app's shape), writing to
-## stdout by convention. This is a prerequisite of `app`, so it happens
-## automatically; run it directly only to refresh the headers on their own.
+## runs with no arguments by default (each script defaults to its app's shape),
+## writing to stdout by convention. This is a prerequisite of `app`, so it
+## happens automatically; run it directly only to refresh the headers on their
+## own. Overriding the shape has to go through GEN_DATA_ARGS rather than by
+## writing dataset.h beforehand: `app` regenerates it and would overwrite it.
 APP_DIR = sw/applications/$(PROJECT)
+GEN_DATA_ARGS ?=
+GEN_DESC_ARGS ?=
 .PHONY: gen-app-data
 gen-app-data:
 	@if [ -f $(APP_DIR)/gen_data.py ]; then \
 		echo "### Generating $(APP_DIR)/dataset.h"; \
-		$(PYTHON) $(APP_DIR)/gen_data.py > $(APP_DIR)/dataset.h.tmp \
+		$(PYTHON) $(APP_DIR)/gen_data.py $(GEN_DATA_ARGS) > $(APP_DIR)/dataset.h.tmp \
 			&& mv $(APP_DIR)/dataset.h.tmp $(APP_DIR)/dataset.h \
 			|| { $(RM) $(APP_DIR)/dataset.h.tmp; exit 1; }; \
 	fi
 	@if [ -f $(APP_DIR)/gen_descriptors.py ]; then \
 		echo "### Generating $(APP_DIR)/descriptors.h"; \
-		$(PYTHON) $(APP_DIR)/gen_descriptors.py > $(APP_DIR)/descriptors.h.tmp \
+		$(PYTHON) $(APP_DIR)/gen_descriptors.py $(GEN_DESC_ARGS) > $(APP_DIR)/descriptors.h.tmp \
 			&& mv $(APP_DIR)/descriptors.h.tmp $(APP_DIR)/descriptors.h \
 			|| { $(RM) $(APP_DIR)/descriptors.h.tmp; exit 1; }; \
 	fi

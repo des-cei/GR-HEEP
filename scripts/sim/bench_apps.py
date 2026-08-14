@@ -97,6 +97,7 @@ class Result:
         self.family = "cpu" if name.startswith("cpu_") else "strela"
         self.kernel = name.split("_", 1)[1]
         self.status = "NOT RUN"
+        self.size = None  # set only by a size sweep (scripts/fpga/genesys2_bench.py)
         self.cycles = None  # kernel cycles: mcycle delta (cpu) or TOT (strela)
         self.counters = {}  # strela only: cfg / tab / stl
         self.sim_cycles = None  # whole program, testbench-reported
