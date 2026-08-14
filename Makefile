@@ -30,6 +30,17 @@ endif
 # TARGET options are 'asic' (default), 'pynq-z2', 'nexys-a7-100t', 'genesys2', 'aup-zu3', 'zcu102', and 'zcu104'
 TARGET ?= asic
 
+# Vivado executable (from `source /tools/env_x-heep.sh`)
+VIVADO ?= vivado
+
+# Genesys2 SPI flash image, written by `vivado-flash-bin` next to the bitstream,
+# and the loader that programs it. Resolved lazily (`=`, not `:=`) so the image
+# is found even when it is created after this Makefile is parsed.
+GENESYS2_VIVADO_DIR  = $(shell find $(BUILD_DIR) -maxdepth 2 -type d -name 'genesys2-vivado' 2>/dev/null | sort -V | head -n 1)
+FLASH_BIN            = $(shell ls $(GENESYS2_VIVADO_DIR)/*_flash.bin 2>/dev/null | head -n 1)
+OPENFPGALOADER      ?= openFPGALoader
+OPENFPGALOADER_FLAGS ?= --verify
+
 # X-HEEP mcu-gen configuration
 X_HEEP_CFG  		?= $(ROOT_DIR)/config/mcu-gen-config.py
 PADS_CFG_ASIC		?= $(ROOT_DIR)/config/gr-heep_pad_cfg.py
@@ -221,6 +232,35 @@ vivado-fpga:
 vivado-fpga-pgm:
 	$(FUSESOC) --cores-root . run --no-export --target=$(FPGA_BOARD) $(FUSESOC_FLAGS) \
 		--run x-heep:systems:gr-heep $(FUSESOC_PARAM) 2>&1 | tee programfpga.log
+
+## Generates the SPI flash image from the implemented Genesys2 bitstream
+## @note Genesys2 only (SPIx4, 32 MB), so it takes no FPGA_BOARD: it reopens the
+## project left by `vivado-fpga FPGA_BOARD=genesys2` in
+## $(BUILD_DIR)/x-heep_systems_gr-heep_*/genesys2-vivado and writes
+## <project>_flash.bit/.bin next to the original .bit.
+.PHONY: vivado-flash-bin
+vivado-flash-bin:
+	$(VIVADO) -mode batch -notrace \
+		-source scripts/fpga/bitstream2flash.tcl \
+		-journal $(BUILD_DIR)/vivado_flash.jou \
+		-log $(BUILD_DIR)/vivado_flash.log
+
+## Writes the flash image to the Genesys2 on-board SPI flash with openFPGALoader
+## @note Genesys2 only, hence no FPGA_BOARD. This is just an alias for the
+## openFPGALoader call: it does not regenerate the image, so run
+## `vivado-flash-bin` first. Unlike `vivado-fpga-pgm` (which configures the FPGA
+## over JTAG and is lost at power-off), this survives a power cycle.
+## @param OPENFPGALOADER_FLAGS=<extra flags> e.g. --unprotect-flash if the write
+## is refused by a protected flash block.
+.PHONY: flash-pgm
+flash-pgm:
+	@[ -n "$(FLASH_BIN)" ] || { \
+		echo "### ERROR: no *_flash.bin found under $(BUILD_DIR)/*/genesys2-vivado."; \
+		echo "### Run 'make vivado-flash-bin' first."; \
+		exit 1; \
+	}
+	@echo "### Writing $(FLASH_BIN) to the Genesys2 SPI flash..."
+	$(OPENFPGALOADER) -b genesys2 -f $(OPENFPGALOADER_FLAGS) $(FLASH_BIN)
 
 ## @section Testing
 

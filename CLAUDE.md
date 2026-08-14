@@ -62,9 +62,20 @@ make questasim-run-app          # builds app then simulates
 make questasim-run-app-gui      # same, with GUI waveform viewer
 make questasim-run-opt-app      # uses the -opt build
 
-# Vivado FPGA build/program (TARGET selects the board)
-make vivado-fpga     TARGET=<pynq-z2|nexys-a7-100t|genesys2|aup-zu3|zcu102|zcu104>
-make vivado-fpga-pgm TARGET=<same as above>
+# Vivado FPGA build/program (FPGA_BOARD selects the board, as in X-HEEP; it is the FuseSoC
+# target name, so it is *not* the same variable as TARGET above)
+make vivado-fpga     FPGA_BOARD=<pynq-z2|nexys-a7-100t|genesys2|aup-zu3|zcu102|zcu104>
+make vivado-fpga-pgm FPGA_BOARD=<same as above>
+
+# SPI flash image for the Genesys2 (no board parameter: it is Genesys2-only). Reopens the
+# implemented design in build/x-heep_systems_gr-heep_*/genesys2-vivado via
+# scripts/fpga/bitstream2flash.tcl, rewrites the bitstream with the SPIx4 settings and writes
+# <project>_flash.bit/.bin next to the original .bit.
+make vivado-flash-bin
+
+# Write that image to the Genesys2 on-board SPI flash with openFPGALoader (Genesys2-only too;
+# a plain alias for the openFPGALoader call, it does not rebuild the image)
+make flash-pgm
 
 # Full regression: builds Verilator, compiles + simulates every app in
 # hw/vendor/x-heep/sw/applications (whitelist-filtered) and sw/applications, checks for
