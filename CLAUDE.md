@@ -405,11 +405,43 @@ Two families:
   scratchpad replays a fixed block a whole number of times, an operand varying along the row and
   one constant along it cannot both be replayed for more than one line per pass — `[u1[i0] x N,
   u1[i0+1] x N, ...]` is a run-length pattern and not a repeat of anything. Hence v1/v2 on the
-  shared buses (`size=N, iters=1`), the u entries in the per-lane scratchpads as one word replayed
-  once per element (`size=1, iters=N`), and **one row per lane per pass**: 60 fenced two-row passes
-  at `N`=120, reloading v1/v2 each time. That costs one extra word of scratchpad traffic per element
-  updated; the mirror-image schedule, per-lane halves of v with the u scalars on the buses, reloads
-  twice as much to update half as much. It also brings a descriptor limit no other app hits: the
+  shared buses, the u entries in the per-lane scratchpads as one word replayed once per element
+  (`size=1, iters=N`), and **one row per lane per step**; the mirror-image schedule, per-lane halves
+  of v with the u scalars on the buses, reloads twice as much to update half as much.
+  It is equally the app to read for the *other* half of that lesson — **changing a scratchpad's
+  address is not the same as reloading it**, which is what makes the one-row-per-lane constraint
+  cost nothing. The whole u vector is parked in each of the four per-lane scratchpads once, loaded
+  with `iters=0` so S_WR returns to S_IDLE without replaying it, and each step re-points the replay
+  with a **param-only descriptor** (`strela_desc.mem_param()`): word 0 alone, byte count zero, no
+  bus traffic and no SRAM access. v1/v2 are loaded once with `iters=N/2` — a lane consumes one
+  replay per row — and never touched again. Because a param-only descriptor writes nothing, it also
+  **removes the per-step fence**: a *loading* descriptor writes the SRAM from S_WR and clobbers the
+  `data_out` still presenting the previous replay's last word, which is the deadlock every
+  scratchpad reload has to fence against, while a param-only one leaves `data_out`/`valid_out`
+  intact and the ISE simply blocks on the scratchpad's `ready_o` until the replay it is replacing
+  has been issued. Back-pressure per scratchpad instead of a barrier across all eight engines. With
+  the fences gone each lane can also take a *contiguous* half of the rows instead of alternating
+  ones, so the two OSEs and the ISE with no scratchpad move their whole half of the matrix in one
+  descriptor. Net: 1392 descriptors → **489**, `TAB` 40% → 21%, `TOT` **25521 → 17650**.
+  Then a second, independent win: **which engine a port lands on is a performance decision, and the
+  mapper does not make it for you.** Its objective is switching activity, which knows nothing about
+  descriptor tables — and it had put lane a's `A` stream on ISE 1, the engine that also owns two of
+  the u scratchpads. An engine carrying both has to interleave them, and it can only push a
+  scratchpad parameter while that scratchpad is between replays, so its descriptor fetches land on
+  the critical path instead of being prefetched. Measured: the identical fetches on ISE 2, which
+  carries nothing else, cost **0.5 cycles each** (59 extra descriptors → 29 cycles), and the two
+  lanes are locked in lockstep by the shared v token, so ISE 1 paced the whole phase. `gemver_1_hv`
+  is therefore the first DFG to carry **`at=` pins** (elastic-cgra's mapper, `parse_pin`), moving
+  `input0` to ISE 0 and leaving ISE 1 and ISE 3 with nothing but their two re-points per row. Every
+  other binding of the unpinned solve is reproduced exactly. Net: 489 descriptors → **430**,
+  `TOT` 17650 → **16325**, `STL` 921 → **327**. `update_kernel.h` consequently comes from a mapper
+  run and **not** from `regress2kernel.py`, which would silently restore the ISE 1 binding.
+  One caveat that only simulation sees: the stride field of a param-only descriptor must be the
+  element width, not zero. The ISE starts its DMA for every transfer descriptor and obione's
+  `a_stride_nonzero` contract is checked on entry, before the empty-transfer shortcut — so a
+  zero-stride version runs fine on FPGA (assertions compiled out under `SYNTHESIS`) and stops
+  Verilator dead.
+  It also brings a descriptor limit no other app hits: the
   replay count *is* the row length, so `N` is capped at **255** by the 8-bit `iters` field, where
   everywhere else `iters` counts row groups. `mat_a2` is a separate array rather than a write-back
   over `mat_a` — the update is elementwise, so in place would in fact be safe, but within a pass the
@@ -426,9 +458,9 @@ Two families:
   phases — and the mode check resolved every descriptor against the last io_map loaded rather than
   its own phase, reporting 120 mismatches on a correct schedule. It now resolves per phase, the way
   the port-coverage check already did (a STRELA submodule change, so it needs a pointer bump).
-  Measured `TOT` 25521 with `CFG` 90, `TAB` 10310 (40%, the price of phase 0's 1392-descriptor
-  table) and `STL` 1351 (5%). It defaults to PolyBench gemver `SMALL_DATASET` (120x120), the same
-  shape as `cpu_gemver`.
+  Measured `TOT` 16325 with `CFG` 87, `TAB` 3150 (19%) and `STL` 327 (2%), against a ~14.4k
+  streaming bound — 32.0x over `cpu_gemver`, where the original schedule was 20.5x. It defaults
+  to PolyBench gemver `SMALL_DATASET` (120x120), the same shape as `cpu_gemver`.
   `strela_fw` is PolyBench floyd-warshall, and it is the **counterpoint to the whole phase
   discussion above**: `path[i][j] = min(path[i][j], path[i][k] + path[k][j])` swept once per pivot
   `k`, which is 900 passes at the default shape and yet **one loaded configuration for the entire
@@ -511,8 +543,14 @@ enabled for FPGA runs and disabled for simulation (for speed) unless overridden 
 
 **Turning an elastic-cgra kernel into a `strela_*` app** — the whole procedure (mapper invocation,
 io_map-driven descriptor generation, the data-generator contract, and the deadlock checklist) lives
-in the **`strela-app` skill**; invoke it rather than reconstructing the steps. The two long,
-log-heavy halves have agents: **`strela-map`** (Gurobi solve + artifact install + kernel lint) and
+in the **`strela-app` skill**; invoke it rather than reconstructing the steps. Its §5 is the
+checklist for scheduling an app at *full* performance — scratchpad reuse via `iters`, re-pointing
+with `mem_param()` instead of reloading, why that deletes the fences, contiguous lane slices, and
+keeping per-step descriptors off the engines that stream. The **`strela-audit` skill** checks all of
+that mechanically against the emitted schedule
+(`python3 .claude/skills/strela-audit/audit.py [app...]`) and reports the redundant bytes and
+barriers with the fix; run it before calling an app finished. The two long, log-heavy halves have
+agents: **`strela-map`** (Gurobi solve + artifact install + kernel lint) and
 **`strela-sim`** (build + Verilator run + verdict). Every toolchain command must go through
 `scripts/gr_heep_env.sh`, because `source /tools/env_x-heep.sh` ends in a `conda activate` that
 fails in a non-interactive shell and makes an `&&` chain skip the real command.

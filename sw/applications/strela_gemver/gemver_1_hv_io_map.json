@@ -23,10 +23,10 @@
       "size": 100
     },
     "input0": {
-      "channel": 10,
+      "channel": 8,
       "location": [
         "pe",
-        1,
+        0,
         "north"
       ],
       "address": "0x200",

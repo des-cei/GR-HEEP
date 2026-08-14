@@ -6,8 +6,9 @@ description: >-
   and self-checks against golden data. Use whenever asked to "make an app for
   <kernel>", to accelerate an elastic-cgra kernel on GR-HEEP, or to regenerate an
   existing strela_* app after a re-solve. Covers the mapper invocation, the
-  io_map-driven descriptor generation, the data generator contract, main.c, and
-  the deadlock checklist.
+  io_map-driven descriptor generation, the data generator contract, main.c, the
+  checklist for scheduling it at full performance (scratchpad reuse, fence
+  removal, engine assignment), and the deadlock checklist.
 ---
 
 # Porting an elastic-cgra kernel into a GR-HEEP STRELA app
@@ -182,7 +183,81 @@ Rules that are not obvious and that `validate()` does **not** catch:
   gen-app-data` runs both with no arguments; if their shapes disagree, the C
   array sizes and the descriptor byte counts silently diverge.
 
-## 5. `main.c`
+## 5. Schedule for performance, not just correctness
+
+A schedule that passes is often 1.5x off the one it could be. The two costs that
+dominate are **descriptor fetches** (12 bytes plus a round trip, and the engine
+does nothing else while it fetches) and **redundant main-memory traffic** (the
+same operand loaded into a scratchpad again and again). Both come from the same
+habit — treating a scratchpad as something you reload every pass. Work down this
+list before declaring an app done; `strela_gemver` went 25521 -> 16325 cycles on
+it, with descriptors falling 1392 -> 430.
+
+**1. Load a scratchpad once and replay it — `iters` is reuse.** `mem()`'s `iters`
+is how many times the block is replayed into the fabric before the engine has to
+touch it again, so set it from the whole *phase*, not the pass. If an operand is
+consumed once per row and the phase has R rows, that is `iters=R` and one load.
+`strela_mm` does this with the B columns; `strela_gemver` replays v1/v2 `N/2`
+times from a single load.
+
+**2. Re-point, do not reload — `mem_param()`.** When the address has to change
+(a per-row scalar; a run-length pattern a single replay cannot produce), park the
+whole vector once with `iters=0` — S_WR returns to S_IDLE without replaying — and
+then issue a **param-only** descriptor per step: word 0 only, byte count zero, no
+bus traffic and no SRAM access. See `strela_desc.mem_param()`.
+
+**3. That is also what removes the fences.** A *loading* descriptor writes the
+SRAM from S_WR, which clobbers the `data_out` register still presenting the
+previous replay's last word; the word is lost and the lane hangs on it. That is
+why a reload needs a `FENCE_SE` in front of it. A param-only descriptor makes no
+SRAM access, so the pending word survives, and the ISE blocks on the scratchpad's
+`ready_o` until the replay it is replacing has finished — back-pressure per
+scratchpad instead of a barrier across all eight engines. **The only fences you
+should need are phase boundaries** (a `TR_CONF` re-gates the fabric, so a
+reconfiguration genuinely needs one). An in-phase fence is nearly always a
+symptom of a reload. When you drop them, check the blocking cannot close a cycle:
+no engine may park on a scratchpad while still owing a stream that the lane
+holding that scratchpad is waiting for.
+
+**4. Give each lane a contiguous slice.** If lane k walks every k-th row it needs
+one descriptor per row; if it walks a contiguous block it needs one descriptor
+total. The fabric does not care which rows a lane gets — only that the lanes stay
+in step — so choose the assignment that makes the addresses contiguous. This is
+what collapses a matrix half into a single descriptor.
+
+**5. Keep per-step descriptors off the engines that stream.** There are only four
+ISEs, so a six-input DFG doubles up two of them — and an engine that carries both
+a stream and a scratchpad has to interleave them, because it can only push a
+scratchpad parameter while that scratchpad is between replays. Its fetches then
+land on the critical path. Measured on `strela_gemver`: the same 59 extra
+descriptors cost **29 cycles** on an engine with slack (it prefetches while the
+fabric is busy) and about **35 cycles per row** on the engine that was also
+streaming. And lanes fed by a shared bus token are locked in lockstep, so the
+busy engine paces every lane, not just its own.
+
+  Which engine a port lands on is the **mapper's** choice, and its objective is
+  switching activity — it knows nothing about descriptor tables. Fix it in the
+  DFG with **`at=`** pins (see elastic-cgra's `new-dfg` skill): `[at=8]` pins an
+  operand to the engine at that channel's flank position, `[at="17!"]` to that
+  exact channel when the router-bus-vs-PE-border choice matters. Pin only what
+  you rely on — every pin is placement freedom the solver loses — and remember
+  that a pinned kernel can no longer be replayed from `regress2kernel.py`, so say
+  so in the app's docstring.
+
+**6. Read the counters, do not guess.** `TOT/CFG/TAB/STL` are printed by every
+app. High `TAB` share means descriptor-bound: the fix is fewer, longer
+descriptors (1-5 above), not a faster fabric. High `STL` means waiting on
+memory. Both near zero with a high `TOT` means recurrence-bound, and no amount of
+descriptor work will help — see `strela_dither_filter`. A descriptor moving `K`
+words costs a fixed 12-byte fetch, so short reduction lengths are what make `TAB`
+bite: `strela_doitgen` spends 82% of its run fetching descriptors at `K`=30,
+against 34% for `strela_gesummv` at `K`=90.
+
+**7. Audit it.** The **`strela-audit` skill** checks all of the above mechanically
+against the emitted schedule and reports what it finds, with the redundant bytes
+and the descriptor counts. Run it before calling an app finished.
+
+## 6. `main.c`
 
 Copy `sw/applications/strela_fft/main.c` and change only: the banner, the
 `set_pe_delay_value()` block (drop it entirely if the DFG has no accumulators),
@@ -190,7 +265,7 @@ and the golden comparison. Keep the MMIO sequence, the interrupt setup and the
 perf-counter readout as they are, and keep returning the error count — the
 regression greps for `Program Finished with value 0`.
 
-## 6. Build, run, verify
+## 7. Build, run, verify
 
 ```bash
 scripts/gr_heep_env.sh make app PROJECT=strela_<name>          # regenerates both headers
@@ -212,7 +287,7 @@ context. A pass looks like `SUCCESS!` plus `Program Finished with value 0`.
       KERNEL=../../../sw/applications/strela_<name>/<app>_kernel.h
   ```
 
-## 7. Register the app
+## 8. Register the app
 
 Add it to the `strela_*` list in `CLAUDE.md`. Nothing else is needed: the test
 whitelist in `test/gr_heep_test_apps.py` is empty, so **every** directory under
