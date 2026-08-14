@@ -63,8 +63,9 @@ The defaults must match gen_descriptors.py's: `make gen-app-data
 PROJECT=strela_relu` runs both with no arguments, so change N in both or the C
 array sizes and the descriptor byte counts silently diverge.
 """)
-    parser.add_argument("N", type=int, nargs="?", default=100,
-                        help="elements per lane (default: 100)")
+    parser.add_argument("N", type=int, nargs="?", default=1024,
+                        help="elements per lane (default: 1024, i.e. 4096 "
+                             "elements: a 64x64 activation map)")
     parser.add_argument("--amplitude", type=int, default=10000,
                         help="max |sample| of the input signal (default: 10000)")
     parser.add_argument("--seed", type=int, default=1,

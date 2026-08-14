@@ -82,8 +82,8 @@ PROJECT=strela_find2min` runs both with no arguments, so change N in both
 together. main.c derives the tracker delay from FIND2MIN_SAMPLES, so N only
 needs changing in those two places.
 """)
-    parser.add_argument("N", type=int, nargs="?", default=128,
-                        help="elements to reduce (default: 128)")
+    parser.add_argument("N", type=int, nargs="?", default=4096,
+                        help="elements to reduce (default: 4096)")
     parser.add_argument("--io-map",
                         default=os.path.join(_HERE, "find2min_io_map.json"),
                         help="io_map.json for the bitstream (default: the copy "

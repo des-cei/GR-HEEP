@@ -25,8 +25,8 @@ shift (rtl/alu/ash.sv with DATA_TC set), so it rounds toward -infinity. Python's
 Stimulus: a deterministic broadband pseudo-random signal. This matters -- the
 obvious alternative, the Nyquist tone x[n] = a*n*(-1)^n that elastic-cgra's own
 regression drives, is *annihilated* by this filter (its three zeros sit exactly
-at Nyquist), and the golden collapses to three non-zero samples out of 100,
-which no longer checks the taps. Broadband noise exercises all four taps with
+at Nyquist), and the golden collapses to three non-zero samples in the whole
+record, which no longer checks the taps. Broadband noise exercises all four taps with
 independent values, so a single wrong coefficient shows up immediately.
 """
 
@@ -78,8 +78,8 @@ The defaults must match gen_descriptors.py's: `make gen-app-data
 PROJECT=strela_fir` runs both with no arguments, so change N in both or the C
 array sizes and the descriptor byte counts silently diverge.
 """)
-    parser.add_argument("N", type=int, nargs="?", default=100,
-                        help="input samples to filter (default: 100)")
+    parser.add_argument("N", type=int, nargs="?", default=4096,
+                        help="input samples to filter (default: 4096)")
     parser.add_argument("--amplitude", type=int, default=10000,
                         help="max |sample| of the input signal (default: 10000)")
     parser.add_argument("--seed", type=int, default=1,

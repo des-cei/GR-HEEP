@@ -94,8 +94,8 @@ The defaults must match gen_descriptors.py's: `make gen-app-data
 PROJECT=strela_find2min` runs both with no arguments, so change N in both or the
 C array sizes and the descriptor byte counts silently diverge.
 """)
-    parser.add_argument("N", type=int, nargs="?", default=128,
-                        help="elements to reduce (default: 128)")
+    parser.add_argument("N", type=int, nargs="?", default=4096,
+                        help="elements to reduce (default: 4096)")
     parser.add_argument("--amplitude", type=int, default=10000,
                         help="max |sample| of the input data (default: 10000)")
     parser.add_argument("--seed", type=int, default=1,

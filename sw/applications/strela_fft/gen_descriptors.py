@@ -88,14 +88,14 @@ def main():
         description="Generate STRELA FFT butterfly ISE/OSE descriptor tables.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""\
-The defaults must match gen_data.py's: one middle stage of a 32-point FFT, 4
-twiddles replayed over 4 blocks, 16 butterflies. `make gen-app-data
+The defaults must match gen_data.py's: one middle stage of a 4096-point FFT, 32
+twiddles replayed over 64 blocks, 2048 butterflies. `make gen-app-data
 PROJECT=strela_fft` runs both with no arguments, so change the two together.
 """)
-    parser.add_argument("N", type=int, nargs="?", default=32,
-                        help="points in the transform (default: 32)")
-    parser.add_argument("--block", type=int, default=8,
-                        help="butterfly block size of this stage (default: 8)")
+    parser.add_argument("N", type=int, nargs="?", default=4096,
+                        help="points in the transform (default: 4096)")
+    parser.add_argument("--block", type=int, default=64,
+                        help="butterfly block size of this stage (default: 64)")
     parser.add_argument("--io-map",
                         default=os.path.join(_HERE, "fft_full_io_map.json"),
                         help="io_map.json from map-bitstream (default: the copy "

@@ -43,8 +43,15 @@ ERROR_PATTERN_DICT = {
     "verilator": r"Program Finished with value (\d+)",
 }
 
-# Timeout for the simulation in seconds
-SIM_TIMEOUT_S = 180
+# Timeout for the simulation in seconds.
+# tb/tb_top.cpp dumps an FST waveform unconditionally, which paces Verilator at
+# roughly 2 kcycles/s, so this is a cycle budget of ~600 k rather than a wall
+# clock. The signal apps run 4096 elements and the largest of them, cpu_fir8,
+# measures 367 k cycles / 180 s -- exactly the old limit, so it would have
+# flapped between passing and timing out. The matmul-shaped cpu_* apps are far
+# past any workable limit and still report as timeouts (which does not fail the
+# run); the cost of the larger budget is that they now take 300 s each to say so.
+SIM_TIMEOUT_S = 300
 
 # Whitelist of apps. Has priority over the blacklist.
 # Useful if you only want to test certain apps

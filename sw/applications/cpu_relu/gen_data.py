@@ -57,8 +57,9 @@ def main():
 The defaults match strela_relu's, which is the point of this app: change N here
 and the CPU baseline no longer measures the same work as the accelerator.
 """)
-    parser.add_argument("N", type=int, nargs="?", default=100,
-                        help="elements per lane (default: 100)")
+    parser.add_argument("N", type=int, nargs="?", default=1024,
+                        help="elements per lane (default: 1024, i.e. 4096 "
+                             "elements: a 64x64 activation map)")
     parser.add_argument("--amplitude", type=int, default=10000,
                         help="max |sample| of the input signal (default: 10000)")
     parser.add_argument("--seed", type=int, default=1,

@@ -110,8 +110,9 @@ The defaults must match gen_descriptors.py's: `make gen-app-data
 PROJECT=strela_dither_filter` runs both with no arguments, so change N in both
 or the C array sizes and the descriptor byte counts silently diverge.
 """)
-    parser.add_argument("N", type=int, nargs="?", default=256,
-                        help="pixels to dither (default: 256, a full 0..255 ramp)")
+    parser.add_argument("N", type=int, nargs="?", default=4096,
+                        help="pixels to dither (default: 4096, a 64x64 image "
+                             "swept by a full 0..255 ramp)")
     parser.add_argument("--seed", type=int, default=1,
                         help="tag RNG seed, fixed so the header is reproducible")
     args = parser.parse_args()

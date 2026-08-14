@@ -20,7 +20,7 @@ is the loop-carried dependence. strela_dither_filter is the app in the suite
 that is **recurrence-bound**: its error feedback is closed inside the fabric
 (select0's initial_valid seed circulating through add0 -> cmp0 -> select0)
 rather than accumulated in a delay counter, so its throughput is set by a 3-hop
-ring rather than by the streams -- measured 2618 cycles for 256 pixels, 10.2
+ring rather than by the streams -- measured 41018 cycles for 4096 pixels, 10.0
 cycles/pixel against the ~1 a feed-forward kernel reaches. The same dependence
 is what the CPU has to serialise on here, which is exactly what makes the two
 numbers worth putting side by side.
@@ -107,8 +107,9 @@ The defaults match strela_dither_filter's, which is the point of this app:
 change N here and the CPU baseline no longer measures the same work as the
 accelerator.
 """)
-    parser.add_argument("N", type=int, nargs="?", default=256,
-                        help="pixels to dither (default: 256, a full 0..255 ramp)")
+    parser.add_argument("N", type=int, nargs="?", default=4096,
+                        help="pixels to dither (default: 4096, a 64x64 image "
+                             "swept by a full 0..255 ramp)")
     parser.add_argument("--seed", type=int, default=1,
                         help="tag RNG seed, fixed so the header is reproducible")
     args = parser.parse_args()

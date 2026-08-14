@@ -76,8 +76,8 @@ def main():
 The defaults match strela_fir8's, which is the point of this app: change N here
 and the CPU baseline no longer measures the same work as the accelerator.
 """)
-    parser.add_argument("N", type=int, nargs="?", default=100,
-                        help="input samples to filter (default: 100)")
+    parser.add_argument("N", type=int, nargs="?", default=4096,
+                        help="input samples to filter (default: 4096)")
     parser.add_argument("--amplitude", type=int, default=10000,
                         help="max |sample| of the input signal (default: 10000)")
     parser.add_argument("--seed", type=int, default=1,

@@ -69,8 +69,8 @@ def main():
 The default must match gen_data.py's: `make gen-app-data PROJECT=strela_fir`
 runs both with no arguments, so change N in both together.
 """)
-    parser.add_argument("N", type=int, nargs="?", default=100,
-                        help="input samples to filter (default: 100)")
+    parser.add_argument("N", type=int, nargs="?", default=4096,
+                        help="input samples to filter (default: 4096)")
     parser.add_argument("--io-map",
                         default=os.path.join(_HERE, "fir_io_map.json"),
                         help="io_map.json for the bitstream (default: the copy "

@@ -71,14 +71,18 @@ def main():
         description="Generate the STRELA FFT butterfly test data header.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""\
-The defaults describe one middle stage of a 32-point FFT: 4 blocks of 8 points,
-4 twiddles replayed 4 times, 16 butterflies. --block FFT_POINTS gives the final
-stage (one block, no replay); --block 2 gives the first (a single twiddle, W^0).
+The defaults describe one middle stage of a 4096-point FFT: 64 blocks of 64
+points, 32 twiddles replayed 64 times, 2048 butterflies -- 4096 complex samples,
+the same data volume as the 64x64 image the other signal apps process. --block
+FFT_POINTS gives the final stage (one block, no replay); --block 2 gives the
+first (a single twiddle, W^0). Note that --block cannot go below 32 at this
+FFT_POINTS: the twiddle replay count is FFT_POINTS/--block and the scratchpad
+descriptor holds it in 8 bits.
 """)
-    parser.add_argument("N", type=int, nargs="?", default=32,
-                        help="points in the transform (default: 32)")
-    parser.add_argument("--block", type=int, default=8,
-                        help="butterfly block size of this stage (default: 8)")
+    parser.add_argument("N", type=int, nargs="?", default=4096,
+                        help="points in the transform (default: 4096)")
+    parser.add_argument("--block", type=int, default=64,
+                        help="butterfly block size of this stage (default: 64)")
     parser.add_argument("--frac-bits", type=int, default=12,
                         help="twiddle fractional bits, Q<n> (default: 12)")
     parser.add_argument("--amplitude", type=int, default=1000,

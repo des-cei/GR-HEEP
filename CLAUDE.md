@@ -200,18 +200,31 @@ Two families:
     apps move the same words in the same order. `cpu_dither_filter` is the interesting comparison
     of the set — its error feedback is the same loop-carried dependence that makes
     `strela_dither_filter` the one recurrence-bound app in the suite.
+    Where the PolyBench twins take their shape from PolyBench, these six share **one** default:
+    **4096 elements**, the 64x64 image `relu` and `dither_filter` are sized for, and the same
+    element count for `fir`, `fir8` and `find2min`. `fft` matches it as 4096 complex points —
+    one middle stage, `--block 64`, so 2048 butterflies over 8192 streamed words; its block
+    cannot go below 32 at that size, because the twiddle replay count is `FFT_POINTS/block` and
+    the scratchpad descriptor holds it in 8 bits. Nothing else in the descriptors moves: all six
+    are single-pass kernels whose length is a free parameter, so raising the default is one
+    `default=` in each generator (`gen_data.py` and, on the STRELA side, `gen_descriptors.py` —
+    the two are run with no arguments by `make gen-app-data` and must be changed together).
   `cpu_mm` predates both groups: it is *not* a PolyBench kernel (it is the CPU twin of
   `strela_mm`, sharing its generator and its 64x64x64 default), has no `polybench_cpu.c` — the
   triple loop is inlined in `main.c` — and toggles GPIOs around the timed region.
 
   **These apps are slow under Verilator** — `tb/tb_top.cpp` dumps an FST waveform
-  unconditionally, so a run costs far more than the cycle count suggests. The matmul-shaped ones
-  (`cpu_threemm`, `cpu_twomm`, `cpu_doitgen`, `cpu_fw`) take tens of minutes and exceed
-  `test/gr_heep_test_apps.py`'s `SIM_TIMEOUT_S` of 180 s. That does not fail CI — the runner exits
+  unconditionally, so a run costs far more than the cycle count suggests — measured at roughly
+  **2 kcycles/s**, which makes `test/gr_heep_test_apps.py`'s `SIM_TIMEOUT_S` a cycle budget rather
+  than a wall clock. The matmul-shaped ones (`cpu_threemm`, `cpu_twomm`, `cpu_doitgen`, `cpu_fw`)
+  take tens of minutes and exceed it. That does not fail CI — the runner exits
   non-zero only on compilation or simulation *failures*, and counts timeouts separately — but it
   does mean `make test` reports them as timed out rather than passing, which was already true of
-  `cpu_threemm` before the newer twins were added. To simulate several of them at once, note that
-  they all share `sw/build/main.hex`: build each app first, copy the hex aside, and run
+  `cpu_threemm` before the newer twins were added. `SIM_TIMEOUT_S` is **300 s**, raised from 180
+  when the signal twins went to 4096 elements: `cpu_fir8` is the largest of them at 367 k cycles /
+  180 s, i.e. exactly the old limit, so it would have flapped. Nothing else sits near the new one.
+  To simulate several of them at once, note that they all share `sw/build/main.hex`: build each
+  app first, copy the hex aside, and run
   `Vtestharness +firmware=<abs path>` from a **separate working directory per run**, or the
   parallel runs will clobber each other's firmware, `uart0.log` and `waveform.fst`.
 - `strela_*` (`strela_mm`, `strela_fft`, `strela_gesummv_single`, `strela_gesummv`,
@@ -243,10 +256,23 @@ Two families:
   shape as `strela_fir` but is **recurrence-bound** — its error feedback is a loop-carried
   dependence closed inside the fabric (`select0`'s `initial_valid` seed circulating through
   `add0 -> cmp0 -> select0`) rather than a `delay_value` accumulator, so there is nothing to
-  patch, yet throughput is set by that 3-hop ring instead of by the streams — measured 2618
-  cycles for 256 pixels, i.e. 10.2 cycles/pixel against the ~1 a feed-forward kernel reaches.
+  patch, yet throughput is set by that 3-hop ring instead of by the streams — measured 41018
+  cycles for 4096 pixels, i.e. 10.0 cycles/pixel against the ~1 a feed-forward kernel reaches.
   It is the app to copy for a sequential scan, and the one to read before assuming a STRELA
   kernel is input-bound.
+  Measured together at the shared 4096-element default, these five split three ways by **what
+  paces them**, which is the thing to establish before optimising any of them:
+  `strela_fir` (6499 cycles, 1.6/element) and `strela_fir8` (9490, 2.3/element) are **fabric-paced**
+  — `STL` is 2 and 3 cycles, so nothing is waiting on memory and the cost is the depth of the
+  transposed-form add chain; `strela_relu` (4007 for 4096 elements) and `strela_fft` (8299 for 8192
+  streamed words) are **memory-paced**, both landing within 2% of one input word and one output
+  word per cycle with `STL` at 99% of `TOT`, so `strela_relu`'s four lanes buy throughput only up
+  to that port and not 4x; and `strela_find2min` (32828, 8.0/element) joins
+  `strela_dither_filter` as **recurrence-paced**, `STL` again near zero. The practical consequence
+  is that the first four gain speedup as the dataset grows (the fixed ~130-cycle `CFG`+`TAB` floor
+  amortises: `strela_fir` went 14.3x -> 19.5x and `strela_fft` 3.5x -> 10.7x between 100/32 and
+  4096) while the last two do not — both families scale linearly, so 2.2x and 1.3x hold at every
+  size.
   `strela_gemm` is the fifth shape and the simplest **chained** app: PolyBench gemm split over two
   bitstreams that run back to back in one execution — `gemm_1_hv` (byte-identical to `mm_hv`, so
   phase 0 is `strela_mm`'s schedule writing a temporary `matAB`) and then `gemm_2_hv`

@@ -24,7 +24,7 @@ RISC-V, and so does Python's, so all three agree bit for bit.
 Stimulus: a deterministic broadband pseudo-random signal, seeded. This matters --
 the Nyquist tone x[n] = a*n*(-1)^n is *annihilated* by this filter (its three
 zeros sit exactly at Nyquist), and the golden would collapse to three non-zero
-samples out of 100, which no longer checks the taps.
+samples in the whole record, which no longer checks the taps.
 """
 
 import argparse
@@ -75,8 +75,8 @@ def main():
 The defaults match strela_fir's, which is the point of this app: change N here
 and the CPU baseline no longer measures the same work as the accelerator.
 """)
-    parser.add_argument("N", type=int, nargs="?", default=100,
-                        help="input samples to filter (default: 100)")
+    parser.add_argument("N", type=int, nargs="?", default=4096,
+                        help="input samples to filter (default: 4096)")
     parser.add_argument("--amplitude", type=int, default=10000,
                         help="max |sample| of the input signal (default: 10000)")
     parser.add_argument("--seed", type=int, default=1,
