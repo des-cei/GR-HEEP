@@ -6,8 +6,9 @@ PolyBench floyd-warshall is one statement swept N times over a distance matrix:
     for k: for i: for j:
         path[i][j] = min(path[i][j], path[i][k] + path[k][j])
 
-which is the app's single bitstream run N*N_PAD/4 times; see gen_descriptors.py
-for why a pivot costs N_PAD/4 passes rather than one.
+which is the app's single bitstream run N*N_PAD/4 times, in N fenced passes of
+N_PAD/4 steps each; see gen_descriptors.py for why a pivot is many steps but only
+one pass.
 
 **Data is PolyBench's own init_array, not random.** Every other generator here
 draws uniform values in +-range, but this kernel needs two things that random
@@ -26,7 +27,7 @@ sentinel, so the sweep has real shortest-path structure to find; the comment
 emitted below reports how many entries the sweep actually changes, which is the
 number to look at before trusting a pass.
 
-**Shapes.** The fabric has four lanes and a pass takes one line each, so the
+**Shapes.** The fabric has four lanes and a step takes one line each, so the
 number of *rows* is padded up to a multiple of 4; the row length stays N, since j
 and k only ever run over the real matrix. Padding rows are zero and stay zero:
 min(0, 0 + path[k][j]) = 0 for non-negative entries, they are never a pivot
@@ -57,7 +58,7 @@ import sys
 
 INT32_MAX = (1 << 31) - 1
 
-LANES = 4          # independent lanes of fw_hv = matrix lines per pass
+LANES = 4          # independent lanes of fw_hv = matrix lines per step
 
 # Descriptor/fabric limits that would otherwise wrap silently.
 MEM_DEPTH = 512    # scratchpad words (StrelaMemDepth, rtl/strela_pkg.sv)
@@ -143,8 +144,8 @@ and the padded rows stay zero by construction.
 
     n_pad = -(-n // LANES) * LANES
 
-    # A line is preloaded into a scratchpad and the pivot column entry is
-    # replayed once per element of it; both fields wrap silently.
+    # The pivot row is preloaded into a scratchpad and the pivot column entry is
+    # replayed once per element of the line; both fields wrap silently.
     limit = min(MAX_SIZE, MEM_DEPTH)
     if n > limit:
         sys.exit(f"error: a line is {n} words, past the {limit} a 9-bit size "

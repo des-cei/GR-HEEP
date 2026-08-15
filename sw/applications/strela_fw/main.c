@@ -26,18 +26,21 @@
 
 /*
  * PolyBench floyd-warshall as one STRELA execution: a single bitstream
- * (fw_kernel, from the committed fw_hv regression) swept over the matrix once
- * per pivot.
+ * (fw_kernel, from a mapper solve of fw_hv -- *not* from the committed regress
+ * entry, which is an older solve with different borders) swept over the matrix
+ * once per pivot.
  *
  *   for k: for i: for j:
  *       path[i][j] = min(path[i][j], path[i][k] + path[k][j])
  *
- * The four lanes each relax one line, so a pivot costs N_PAD/4 fenced passes and
- * the run is N*N_PAD/4 of them -- every one behind a FENCE_SE, because k must
- * complete before k+1 and because a scratchpad replay must drain before the next
- * pass's TR_MEM_* reloads it. There is only ever one configuration: the pivot is
- * an *address*, not a bitstream field, so unlike strela_atax or strela_gemver
- * this app never reconfigures. See gen_descriptors.py.
+ * The four lanes each relax one line, so a pivot is N_PAD/4 steps -- but a step
+ * is not a pass: the pivot row is replayed out of a scratchpad and the pivot
+ * column walked with param-only re-points, neither of which writes SRAM, so the
+ * whole pivot is *one* fenced pass and the run is N of them rather than
+ * N*N_PAD/4. What is left behind each FENCE_SE is the real dependence, k before
+ * k+1. There is only ever one configuration: the pivot is an *address*, not a
+ * bitstream field, so unlike strela_atax or strela_gemver this app never
+ * reconfigures. See gen_descriptors.py.
  *
  * Nothing is patched at runtime. Every PE of fw_hv reads back delay_value 0 and
  * constant 0 -- there is no accumulator whose delay is a reduction length and no

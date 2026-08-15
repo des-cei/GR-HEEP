@@ -239,13 +239,16 @@ Two families:
   so `gen_data.py` / `gen_descriptors.py` (run by `make gen-app-data`, a prerequisite of `app`)
   regenerate the gitignored `dataset.h` / `descriptors.h` without re-running the mapper.
   The kernel headers of `strela_fir`, `strela_fir8`, `strela_relu`, `strela_find2min`,
-  `strela_doitgen`, `strela_fw`, both
+  `strela_doitgen`, both
   halves of `strela_gemm`, of `strela_gesummv`, of `strela_atax`, of `strela_bicg` and of
   `strela_mvt`, and every phase of `strela_2mm` / `strela_3mm` / `strela_gemver`
   come from the committed
   regress bitstreams via `scripts/regress2kernel.py`, not from a mapper run;
   `strela_dither_filter` has no regress entry, so its header came from a real (few-minute) Gurobi
-  solve of `mapper/applications/dither_filter`.
+  solve of `mapper/applications/dither_filter`, and `strela_fw` has one but **must not use it** —
+  its DFG carries `border=` constraints the committed solve predates, exactly as
+  `strela_gemver`'s carries `at=` pins, so `regress2kernel.py` would silently restore the slow
+  binding.
   Between them these five cover the four descriptor shapes worth copying: `strela_fir` /
   `strela_fir8` are the minimum (one streamed input, one streamed output, a single pass, no
   scratchpad, nothing to patch); `strela_relu` is the unrolled map (four independent lanes over
@@ -463,8 +466,8 @@ Two families:
   to PolyBench gemver `SMALL_DATASET` (120x120), the same shape as `cpu_gemver`.
   `strela_fw` is PolyBench floyd-warshall, and it is the **counterpoint to the whole phase
   discussion above**: `path[i][j] = min(path[i][j], path[i][k] + path[k][j])` swept once per pivot
-  `k`, which is 900 passes at the default shape and yet **one loaded configuration for the entire
-  run**, with `CFG` measured at 24 cycles. A pivot is an *address*, not a bitstream field — it
+  `k`, which is 900 *steps* at the default shape and yet **one loaded configuration for the entire
+  run**, with `CFG` measured at 26 cycles. A pivot is an *address*, not a bitstream field — it
   changes which line the descriptors point at and nothing else — so where `strela_atax` needs two
   copies for two reduction lengths and `strela_gemver` two for two constants, `fw_hv` is loaded
   once and never patched at all: every one of its PEs reads back `delay_value` 0 and constant 0,
@@ -475,11 +478,25 @@ Two families:
   Two schedule points. The pivot-column entry `path[i][k]` is *constant along the streamed line*,
   which is `strela_gemver`'s rank-2-update problem again — only a scratchpad can hold one word and
   replay it (`size=1, iters=N`), a stream would need stride 0 and hang obione — so it is again
-  **one line per lane per pass**, and again the 8-bit `iters` field caps `N` at 255 because the
-  replay count *is* the line length. The mapper's placement makes lanes 1 and 2 forced (exactly one
-  of their two `via` ports is a scratchpad, so the pivot column must go there) and lanes 0 and 3
-  free; `feed()` reads the kind out of the io_map instead of hard-coding it, so a re-solve that
-  moves a port between a scratchpad and a stream still emits a correct table. And the two buffers
+  **one line per lane per step**, and again the 8-bit `iters` field caps `N` at 255 because the
+  replay count *is* the line length. But — and this is the lesson the app now exists to make —
+  **a step is not a pass**: that constraint fixes how much data crosses the fabric per step and
+  says nothing about how many steps one fenced pass may cover. All three operands are re-pointed
+  rather than reloaded (the column parked with `iters=0` and walked with `mem_param()`, the pivot
+  row loaded once per pivot with `iters=steps`, the line streamed), no descriptor in the body of a
+  pass writes SRAM, so **the whole pivot is one pass**: `N` barriers, not `N*N_PAD/4`.
+  That in turn is what the DFG's `border=` constraints are for, and `strela_fw` is the app to read
+  for **borders as a performance decision** the way `strela_gemver` is for `at=` pins. Pinning both
+  `add` operands to scratchpads (`border="west,east"`) is what lets the pivot row be replayed
+  instead of re-streamed; pinning the updated line to a stream (`border=north`) matters even more,
+  because `strela_memory.sv` does not overlap load and replay — S_WR absorbs a whole block before
+  the start pulse flips it to S_WR_CGRA — so a scratchpad-bound line costs `2N` bus cycles per step
+  against `N`. Together they also make the engine balance structural: eight vias over eight
+  scratchpad positions and four lines over four north positions are both bijections, and ISE `i`
+  owns exactly `MEM_W(3-i)`, `MEM_E(i)` and north column `i`, so every ISE ends up with one
+  `col` re-point, one `piv` load and one line stream — **two descriptors per engine per step**, with
+  no `at=` pin needed. `assign_roles()` re-derives which via is which from the io_map rather than
+  hard-coding it, so a re-solve that moves a port still emits a correct (if slower) table. And the two buffers
   **ping-pong**, one pivot each, rather than relaxing in place as PolyBench does: it costs one extra
   `N_PAD x N` array and buys the removal of the entire in-pass ordering argument, since iteration
   `k` reads two lines it does not own. That the two are the same answer is a two-line proof —
@@ -492,19 +509,29 @@ Two families:
   `gen_data.py` computes the golden *both* ways and asserts they agree, turning that proof into a
   check on the actual data; it reports how many entries the sweep changes (2476 of 3600 at the
   default), which is the number to look at before trusting a pass.
-  It is also the first app that is **descriptor-table-size bound**, a limit no other one here hits.
-  The pass count is `N*N/4` and a pass costs 24 descriptors (12 in, 4 out, 8 fence), so the tables
-  grow as `6*N^2` descriptors: 259 KiB at `N`=60 against the **512 KiB interleaved section** the
-  tables and both matrices share, but 2.3 MiB at PolyBench `SMALL_DATASET` (180) — which is
-  comfortably inside every descriptor-ISA limit and still cannot be built. So it defaults to
+  It is also the app that is **descriptor-table-size bound**, a limit no other one here hits. A
+  pass costs 8 loads, 8 descriptors per step, 4 writes and 8 fence entries, so the tables grow as
+  `~2*N^2` descriptors — 98 KiB at `N`=60 against the **512 KiB interleaved section** the tables
+  and both matrices share, with a ceiling at `N`=124. PolyBench `SMALL_DATASET` (180) is
+  comfortably inside every descriptor-ISA limit and still cannot be built, so it defaults to
   floyd-warshall **`MINI_DATASET` (60x60)**, the only app here not on `SMALL`, and
-  `gen_descriptors.py` reports the real byte count rather than letting the link fail. Measured
-  `TOT` 423294 with `CFG` 24, `TAB` 162797 (38%) and `STL` 33986 (8%), against a ~108k streaming
-  bound — the gap is the 900 `FENCE_SE` barriers, which is the price of `k` being sequential, and
-  the `TAB` share sits between `strela_gesummv`'s 34% and `strela_doitgen`'s 82% for the same
-  reason as both: a 60-element line per fixed 12-byte descriptor fetch, with a third of each ISE
-  table being fences. At ~500k simulated cycles it is **the slowest app in the suite** (about four
-  minutes under Verilator, ~3x `strela_doitgen`), so lower `N` if `make test` needs to be quicker.
+  `gen_descriptors.py` reports the real byte count rather than letting the link fail. (The
+  pass-per-step schedule this replaced needed `6*N^2` descriptors, 253 KiB at `N`=60, and capped
+  `N` at 80.)
+  Measured `TOT` **301890** with `CFG` 26, `TAB` 61403 (20%) and `STL` 21650 (7%), down from
+  423294 / 162797 (38%) — 21596 descriptors and 899 barriers became **8404 and 59**. Against
+  `cpu_fw`'s 3046316 cycles at the same 60x60 that is **10.1x**, where the pass-per-step schedule
+  reached 7.2x. What is left
+  is **not** descriptor cost: 301890 cycles over 900 steps of 60 elements per lane is 5.6
+  cycles/element, and elastic-cgra's own `make perf` measures `fw` at about 2 tokens every 10
+  cycles, so the app is now **fabric-paced**. The likely mechanism, not yet confirmed in
+  simulation, is that the `min` diamond reconverges on `select` two FU hops apart
+  (`sub` -> `cmp` -> cond) while `configs/4x4-HV.hjson` uses lazy forks, so a token waits for the
+  slow branch. The low `STL` says the same thing (compare `strela_relu`/`strela_fft`, which
+  are memory-paced at `STL` ~99% of `TOT`). Squeezing it further is a DFG/fabric-config question —
+  balancing the reconvergence, or `eager_fork` — not a descriptor one. At ~300k simulated cycles it
+  is still **the slowest app in the suite** (about three minutes under Verilator, ~3x
+  `strela_doitgen`), so lower `N` if `make test` needs to be quicker.
 
 **Two size limits that are not obvious from the descriptor ISA**, both hit when scaling these
 apps past their original toy shapes:
