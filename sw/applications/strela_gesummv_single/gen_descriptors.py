@@ -9,15 +9,19 @@ next to this script and describe one solve; keep them in step.
 Kernel contract (mapper/applications/gesummv_hv/main.dot), which fixes what each
 port means:
 
-    input4 = x                      shared vector, scratchpad, replayed once per
-                                    output row of the pass
+    input4 = x                      shared vector, scratchpad, preloaded once
+                                    for the whole run and replayed once per
+                                    output row
     input0 = A rows of chain 0      input1 = A rows of chain 1
     input2 = B rows of chain 0      input3 = B rows of chain 1
     output0 = y of chain 0          output1 = y of chain 1
 
 Chain 0 owns rows [0, M/2) and chain 1 rows [M/2, M). A pass preloads a block of
 rows_per_pass() rows for each chain, so M*N is no longer bounded by the 512-word
-scratchpad -- only one row block is.
+scratchpad -- only one row block is. What is *not* per pass is x: the matrix
+blocks differ from pass to pass, x does not, so it is loaded once and replayed
+M/2 times. Only the loads that change have to be repeated, which is also why the
+FENCE_SE between passes survives -- see build().
 
 so y[i] = alpha*sum_j A[i][j]*x[j] + beta*sum_j B[i][j]*x[j], with alpha and
 beta PE constants and the reduction length N carried as the accumulators'
@@ -105,11 +109,19 @@ def build(m, n, io_map, rows=None):
         if first:
             prog.fence()
         with prog:
-            # Scratchpads first. x is the shared operand every product waits on,
-            # and ISE 3 must release MEM_E 3 before it blocks on the input3
-            # stream.
-            prog.mem("input4", "vec_x", 0, stride=ELEM, count=n,
-                     size=n, iters=block)
+            # Scratchpads first: ISE 3 must release MEM_E 3 before it blocks on
+            # the input3 stream.
+            #
+            # x, the operand both products share, is loaded once for the whole
+            # run rather than once per pass: every pass replays the *same*
+            # block, so a reload would re-read what the scratchpad already held.
+            # `iters` counts replays, one per output row, so it is `half` and
+            # not this pass's `block`. The fences below do not disturb that -- a
+            # FENCE_SE waits on the engines, it does not reset a scratchpad, and
+            # the pending replays survive it.
+            if not first:
+                prog.mem("input4", "vec_x", 0, stride=ELEM, count=n,
+                         size=n, iters=half)
             prog.mem("input0", "mat_a", first * n, stride=ELEM, count=words,
                      size=words, iters=1)
             prog.mem("input1", "mat_a", (half + first) * n, stride=ELEM,
@@ -167,9 +179,10 @@ PROJECT=strela_gesummv` runs both with no arguments, so change the two together.
         raise SystemExit(f"{rows} rows of {n} columns need {rows * n}-word "
                          f"scratchpads, past the {min(MAX_SIZE, MEM_DEPTH)} "
                          "available; lower --rows-per-pass or --cols")
-    if rows > MAX_ITERS:
-        raise SystemExit(f"a pass replays x {rows} times, past the {MAX_ITERS} "
-                         "iters can hold; lower --rows-per-pass")
+    if half > MAX_ITERS:
+        raise SystemExit(f"one preload of x is replayed {half} times, once per "
+                         f"output row per chain, past the {MAX_ITERS} iters can "
+                         "hold; lower M")
 
     prog = build(m, n, args.io_map, rows)
     prog.validate()
@@ -177,7 +190,7 @@ PROJECT=strela_gesummv` runs both with no arguments, so change the two together.
     passes = -(-half // rows)
     note = (f"gesummv {m}x{n}: y = alpha*A@x + beta*B@x, two accumulator chains "
             f"of {half} rows, walked in {passes} pass(es) of up to {rows} rows "
-            "with x replayed once per row")
+            f"with one preload of x replayed {half} times, once per row")
     prog.emit_c_header(args.output or "/dev/stdout",
                        includes=("strela.h", "gesummv_hv_kernel.h", "dataset.h"),
                        extra_note=note)

@@ -93,16 +93,35 @@ scratchpad every lane is waiting on. No output of either kernel is
 scratchpad-backed, so this app is free of the OSE-side `strela_memory.sv` race
 that caps strela_mm's pass length.
 
-Why the fences are not optional. Between passes of the same phase -- including
-between the two products, which is exactly that -- an ISE that ran ahead would
-reach the next pass's TR_MEM_W while the fabric is still draining the current
-replay of y: `strela_memory.sv` presents the last word of a replay from S_IDLE,
-where `ready_o` is already high, so the new mem_param is accepted, the FSM
-leaves for S_WR and that word is never handed to the fabric. Before the *phase*,
-the fence is what makes the reconfiguration safe: an ISE re-entering TR_CONF
-clears its `conf_done_o`, which drops the global `conf_reg` and re-gates every
-fabric handshake -- and t1/t2 are written by phase 0's OSEs and read straight
-back by phase 1's ISEs, which only a FENCE_SE waits on both of.
+Why there is one fence and not two. A barrier between passes of the same phase
+is real: an ISE that ran ahead would reach the next pass's TR_MEM_W while the
+fabric is still draining the current replay of y, and `strela_memory.sv`
+presents the last word of a replay from S_IDLE, where `ready_o` is already high
+-- so the new descriptor is accepted, the FSM leaves for S_WR and that word is
+never handed to the fabric. But that is a hazard of *loading*, and the two
+products do not load. y_1 and y_2 are 2*N_PAD words together, well inside the
+512-word scratchpad, so they are parked once with `iters=0` and each product
+re-points the replay with a param-only `mem_param()`: word 0 alone, no bus
+traffic and no SRAM write, so there is nothing to clobber `data_out` with and
+the ISE simply blocks on the scratchpad's `ready_o` until the replays it is
+replacing have been issued. Nothing in the phase writes SRAM after that one
+park, so the phase needs no barrier at all -- not between the products and not
+between the chunks `--groups-per-pass` splits them into, which are now only a
+descriptor-granularity knob. The only FENCE_SE left is the phase boundary, where
+it is what makes the reconfiguration safe: an ISE re-entering TR_CONF clears its
+`conf_done_o`, which drops the global `conf_reg` and re-gates every fabric
+handshake -- and t1/t2 are written by phase 0's OSEs and read straight back by
+phase 1's ISEs, which only a FENCE_SE waits on both of.
+
+What orders the products without a barrier is the fabric. y reaches all four
+lanes through one fork, so no lane can start reducing a column of A against y_2
+while another is still on a row against y_1; the accumulators emit t1's words
+before t2's on every lane, which is what lets one output descriptor per product
+per lane collect them. Engines that run ahead into t2's lines only queue tokens
+with nothing to reduce against yet. Note this is the *opposite* conclusion to
+strela_fw, whose per-pivot barriers survive an identical-looking audit finding:
+there the next step reads a buffer the current one writes, and no amount of
+scratchpad parking removes a read-after-write through main memory.
 """
 
 import argparse
@@ -119,6 +138,7 @@ from strela_desc import StreamProgram  # noqa: E402
 ELEM = 4          # int32 everywhere
 SEW = 32
 ROWS = 4          # accumulator lanes of mvt_1_hv = matrix lines per group
+PRODUCTS = 2      # A@y_1 and A^T@y_2, whose vectors share one scratchpad load
 MEM_DEPTH = 512   # scratchpad words (StrelaMemDepth, rtl/strela_pkg.sv)
 MAX_SIZE = 511    # mem_param size is 9 bits
 MAX_ITERS = 255   # mem_param iters is 8 bits
@@ -147,9 +167,9 @@ def stream_line(prog, port, sym, index, stride, count, max_bytes=MAX_BYTES):
                     stride=stride, count=block)
 
 
-def matvec(prog, out_sym, a_sym, vec_sym, line_base, line_stride, n,
-           per_pass, fence_first, max_bytes=MAX_BYTES):
-    """Emit the passes computing `out(n) = lines(a_sym) . vec_sym`.
+def matvec(prog, products, n, per_pass, max_bytes=MAX_BYTES):
+    """Emit the passes computing `out(n) = lines(a_sym) . y_half` for every
+    (out_sym, line_base, line_stride, half) in `products`.
 
     A "line" is a row of A for t1 and a column for t2; `line_base(l)` gives its
     first element and `line_stride` the byte step between its elements, which is
@@ -157,33 +177,50 @@ def matvec(prog, out_sym, a_sym, vec_sym, line_base, line_stride, n,
     length is n either way, which is what lets both products share one loaded
     bitstream.
 
-    One pass preloads y once, replays it once per group of ROWS lines, and
-    streams the four lines of the group down the four lanes; lane k takes line
-    ROWS*g+k and produces element ROWS*g+k of the result, so one output
-    descriptor per lane walks the whole chunk with a stride of ROWS elements.
+    One pass parks both y vectors once, and each product re-points the replay at
+    its own half and replays it once per group of ROWS lines; the four lines of
+    a group stream down the four lanes, lane k taking line ROWS*g+k and
+    producing element ROWS*g+k of the result, so one output descriptor per lane
+    walks the whole chunk with a stride of ROWS elements.
+
+    Parking both halves is what makes the two products one pass. A `mem()` per
+    product would be a *loading* descriptor, which writes the SRAM from S_WR and
+    clobbers the word `data_out` is still presenting from the previous replay --
+    the deadlock a FENCE_SE between the products used to guard against.
+    `mem_param()` carries word 0 only: no SRAM access, so nothing is clobbered,
+    and the ISE just blocks on the scratchpad's `ready_o` until the replays it
+    is replacing have been issued. Back-pressure on one scratchpad instead of a
+    rendezvous of all eight engines.
     """
     groups = n // ROWS
     for first in range(0, groups, per_pass):
         block = min(per_pass, groups - first)
-        if fence_first or first:
-            prog.fence()                       # FENCE_SE, all eight engines
         with prog:
             # The scratchpad first: ISE 3 must release MEM_W 0 before it blocks
-            # on the input0 stream, and y is what every lane waits on.
-            prog.mem("input4", vec_sym, 0, stride=ELEM, count=n,
-                     size=n, iters=block)
+            # on the input0 stream, and y is what every lane waits on. Parked
+            # once for the whole phase -- the block never changes, and nothing
+            # else in the phase writes SRAM, which is why the passes below need
+            # no barrier between them either.
+            if not first:
+                prog.mem("input4", "vec_y", 0, stride=ELEM, count=PRODUCTS * n,
+                         size=PRODUCTS * n, iters=0)
 
-            for lane in range(ROWS):
-                for group in range(first, first + block):
-                    stream_line(prog, f"input{lane}", a_sym,
-                                line_base(ROWS * group + lane),
-                                line_stride, n, max_bytes)
+            for out_sym, line_base, line_stride, half in products:
+                # Word 0 only: re-point the replay at this product's half.
+                prog.mem_param("input4", mem_addr=half * n, size=n, iters=block)
+
+                for lane in range(ROWS):
+                    for group in range(first, first + block):
+                        stream_line(prog, f"input{lane}", "mat_a",
+                                    line_base(ROWS * group + lane),
+                                    line_stride, n, max_bytes)
 
             # One word per group on each lane, the accumulator's delayed output;
             # the lanes interleave, hence the ROWS-element stride.
-            for lane in range(ROWS):
-                prog.out(f"output{lane}", out_sym, ROWS * first + lane,
-                         stride=ROWS * ELEM, count=block)
+            for out_sym, _, _, _ in products:
+                for lane in range(ROWS):
+                    prog.out(f"output{lane}", out_sym, ROWS * first + lane,
+                             stride=ROWS * ELEM, count=block)
 
 
 def build(n_pad, io_map_matvec, io_map_add, per_pass, max_bytes=MAX_BYTES):
@@ -193,8 +230,8 @@ def build(n_pad, io_map_matvec, io_map_add, per_pass, max_bytes=MAX_BYTES):
         app="strela_mvt",
         arrays={
             "mat_a": (n_pad * n_pad, ELEM, [n_pad, n_pad]),
-            "vec_y1": (n_pad, ELEM),
-            "vec_y2": (n_pad, ELEM),
+            # y_1 then y_2, adjacent so one scratchpad load holds both.
+            "vec_y": (PRODUCTS * n_pad, ELEM),
             "vec_x1_in": (n_pad, ELEM),
             "vec_x2_in": (n_pad, ELEM),
             "vec_t1": (n_pad, ELEM),
@@ -207,15 +244,14 @@ def build(n_pad, io_map_matvec, io_map_add, per_pass, max_bytes=MAX_BYTES):
     prog.mark_output("vec_t1", "vec_t2", "vec_x1", "vec_x2")
     prog.conf_all()
 
-    # ---- phase 0: both products, one configuration -------------------------
+    # ---- phase 0: both products, one configuration, one pass ---------------
     # t1 walks rows of A, t2 walks columns; same reduction length, so the second
-    # is passes of the same loaded bitstream rather than a phase of its own.
-    matvec(prog, "vec_t1", "mat_a", "vec_y1",
-           line_base=lambda row: row * n_pad, line_stride=ELEM,
-           n=n_pad, per_pass=per_pass, fence_first=False, max_bytes=max_bytes)
-    matvec(prog, "vec_t2", "mat_a", "vec_y2",
-           line_base=lambda col: col, line_stride=n_pad * ELEM,
-           n=n_pad, per_pass=per_pass, fence_first=True, max_bytes=max_bytes)
+    # is not a phase of its own -- and both y vectors fit one scratchpad load,
+    # so it is not a pass of its own either.
+    matvec(prog, (
+        ("vec_t1", lambda row: row * n_pad, ELEM, 0),
+        ("vec_t2", lambda col: col, n_pad * ELEM, 1),
+    ), n=n_pad, per_pass=per_pass, max_bytes=max_bytes)
 
     # ---- phase 1: x1 = x1_in + t1 and x2 = x2_in + t2 ----------------------
     # The add kernel's two lanes are independent, and here they carry the two
@@ -278,10 +314,12 @@ multiple of 4 here exactly as it is there.
     per_pass = args.groups_per_pass or groups_per_pass(n_pad // ROWS)
 
     # validate() catches none of these -- size and iters both wrap silently.
+    # Both y vectors are parked in one scratchpad, so the pair is what must fit.
     limit = min(MAX_SIZE, MEM_DEPTH)
-    if n_pad > limit:
-        raise SystemExit(f"y is {n_pad} words, past the {limit} a 9-bit size "
-                         "field and a 512-word scratchpad allow; lower N")
+    if PRODUCTS * n_pad > limit:
+        raise SystemExit(f"y_1 and y_2 are {PRODUCTS * n_pad} words together, "
+                         f"past the {limit} a 9-bit size field and a "
+                         "512-word scratchpad allow; lower N")
     if not 1 <= per_pass <= MAX_ITERS:
         raise SystemExit(f"--groups-per-pass={per_pass}: a pass replays y that "
                          f"many times, which must fit the {MAX_ITERS} the "
@@ -301,8 +339,9 @@ multiple of 4 here exactly as it is there.
     col_bytes = n_pad * n_pad * ELEM
     split = -(-col_bytes // args.max_stream_bytes)
     note = (f"mvt {n}x{n} (padded to {n_pad}): t1 = A@y_1 and t2 = A^T@y_2 "
-            f"under one configuration, {passes} pass(es) each of up to "
-            f"{per_pass} four-line groups, then behind a FENCE_SE "
+            f"under one configuration, {passes} pass(es) of up to "
+            f"{per_pass} four-line groups of each, sharing one parked copy of "
+            f"y_1|y_2, then behind a FENCE_SE "
             f"x1 = x1_in + t1 and x2 = x2_in + t2; a column of A spans "
             f"{col_bytes} bytes and is streamed as {split} descriptor(s)")
     prog.emit_c_header(args.output or "/dev/stdout",

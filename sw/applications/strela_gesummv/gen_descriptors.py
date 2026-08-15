@@ -5,7 +5,7 @@ PolyBench gesummv, `y = alpha*A@x + beta*B@x`, split over the two committed HV
 bitstreams that elastic-cgra ships for it:
 
     phase 0  matvec     vec_ax = A @ x      (gesummv_1_hv)
-             matvec     vec_bx = B @ x      (the same configuration, more passes)
+             matvec     vec_bx = B @ x      (the same configuration, same pass)
     phase 1  scale_add  vec_y  = alpha*vec_ax + beta*vec_bx   (gesummv_2_hv)
 
 The interesting part is that the two matrix-vector products are *not* two
@@ -13,10 +13,15 @@ phases. A phase is one loaded bitstream, and both products want the same one:
 same reduction length (N, the accumulators' delay_value) and same PE constant,
 because alpha and beta are applied by scale_add at the end rather than folded
 into the products -- which is also how PolyBench writes the kernel. So B@x is
-just more passes of the configuration A@x already runs under, and the run has a
-single reconfiguration in it. Contrast strela_2mm, whose two matmul phases *do*
-need one loaded bitstream each: their reduction lengths differ, and
+just more rows through the configuration A@x already runs under, and the run has
+a single reconfiguration in it. Contrast strela_2mm, whose two matmul phases
+*do* need one loaded bitstream each: their reduction lengths differ, and
 `delay_value` lives in the bitstream.
+
+They are not even two passes. Both products reduce against the same x, so the
+one preload is replayed for the row groups of both and B's rows queue behind A's
+on each engine -- see matvec(). That is the second half of the same lesson: a
+phase is a configuration, and a pass is a *scratchpad load*, not a statement.
 
 Both bitstreams come from elastic-cgra's committed regression, replayed into
 kernel headers without re-running the mapper:
@@ -73,17 +78,26 @@ parked on a stream can no longer release the scratchpad the fabric is waiting
 on. No output is scratchpad-backed here, so this kernel is free of the OSE-side
 `strela_memory.sv` race that caps strela_mm's pass length.
 
-Why the fences are not optional. Between passes of the *same* phase, an ISE that
-runs ahead would reach the next pass's TR_MEM_W while the fabric is still
-draining the current replay of x: `strela_memory.sv` presents the last word of a
-replay from S_IDLE, where `ready_o` is already high, so the new mem_param is
-accepted, the FSM leaves for S_WR and that word is never handed to the fabric
-(the same deadlock strela_gesummv_single documents). Before a *phase*, the fence
-is what makes the reconfiguration safe: an ISE re-entering TR_CONF clears its
-`conf_done_o`, which drops the global `conf_reg` and re-gates every fabric
-handshake, so anything still in flight would hang -- and vec_ax/vec_bx are
-written by this phase's OSEs and read back by the next one's ISEs, which only
-FENCE_SE waits on both of.
+Why the fences are not optional -- and why there is only one left. Between
+passes of the *same* phase, an ISE that runs ahead would reach the next pass's
+TR_MEM_W while the fabric is still draining the current replay of x:
+`strela_memory.sv` presents the last word of a replay from S_IDLE, where
+`ready_o` is already high, so the new mem_param is accepted, the FSM leaves for
+S_WR and that word is never handed to the fabric (the same deadlock
+strela_gesummv_single documents). At the default shape there are no such passes:
+one preload of x covers both products, so the only fence is the phase boundary.
+There the fence is what makes the reconfiguration safe: an ISE re-entering
+TR_CONF clears its `conf_done_o`, which drops the global `conf_reg` and re-gates
+every fabric handshake, so anything still in flight would hang -- and
+vec_ax/vec_bx are written by this phase's OSEs and read back by the next one's
+ISEs, which only FENCE_SE waits on both of.
+
+What keeps the two products apart without a fence is the fabric, not the
+schedule. x reaches all four lanes through one fork, so a lane cannot consume a
+row of B while another lane is still reducing a row of A; the accumulators
+therefore emit A's words before B's on every lane, which is what lets one output
+descriptor per product per lane collect them. Engines running ahead only queue
+tokens that have nothing to reduce against yet.
 """
 
 import argparse
@@ -101,6 +115,7 @@ ELEM = 4          # int32 everywhere
 SEW = 32
 ROWS = 4          # accumulator lanes of gesummv_1_hv = rows reduced per group
 LANES = 2         # independent lanes of gesummv_2_hv
+PRODUCTS = 2      # A@x and B@x, sharing one preload of x per pass
 MEM_DEPTH = 512   # scratchpad words (StrelaMemDepth, rtl/strela_pkg.sv)
 MAX_SIZE = 511    # mem_param size is 9 bits
 MAX_ITERS = 255   # mem_param iters is 8 bits
@@ -109,41 +124,57 @@ MAX_BYTES = 65535  # descriptor word 2 carries a 16-bit byte count
 
 def groups_per_pass(row_groups):
     """Row groups in one pass: as many as the 8-bit `iters` field can replay x
-    for. Nothing else here grows with the pass length -- every output is a
-    direct stream, so there is no scratchpad drain to keep short."""
-    return max(1, min(row_groups, MAX_ITERS))
+    for, halved because a pass now replays x for both products (see matvec()).
+    Nothing else here grows with the pass length -- every output is a direct
+    stream, so there is no scratchpad drain to keep short."""
+    return max(1, min(row_groups, MAX_ITERS // PRODUCTS))
 
 
-def matvec(prog, out_sym, a_sym, n, row_groups, per_pass, fence_first):
-    """Emit the passes computing `out(4*row_groups) = a(4*row_groups x n) @ x`.
+def matvec(prog, products, n, row_groups, per_pass):
+    """Emit the passes computing `out(4*row_groups) = a(4*row_groups x n) @ x`
+    for every (out_sym, a_sym) in `products`.
 
     One pass preloads x once, replays it once per row group, and streams the
     four rows of each group down the four lanes; lane k takes row 4*g+k and
     produces element 4*g+k of the result, so one output descriptor per lane
     walks the whole chunk with a stride of four elements.
+
+    Both products share that one preload rather than taking a pass each. x is
+    the *same* block for A@x and B@x, so a second load would re-read what the
+    scratchpad already held, and the FENCE_SE between the two products existed
+    only to keep that reload from clobbering the word still in flight. Extending
+    `iters` to cover both products removes the load and the barrier together:
+    what orders the lanes is not the fence but the x token itself, forked to all
+    four of them, so no lane can consume a row of B while another is still on A.
+    B's rows simply queue behind A's on each engine.
     """
     for first in range(0, row_groups, per_pass):
         block = min(per_pass, row_groups - first)
-        if fence_first or first:
+        if first:
             prog.fence()                       # FENCE_SE, all eight engines
         with prog:
             # The scratchpad first: ISE 3 must release MEM_W 0 before it blocks
             # on the input3 stream, and x is the operand every lane waits on.
             prog.mem("input4", "vec_x", 0, stride=ELEM, count=n,
-                     size=n, iters=block)
+                     size=n, iters=block * len(products))
 
             # One descriptor per row: a row is n contiguous elements, and the
             # jump to the lane's next row is not a stride the DMA can take.
-            for lane in range(ROWS):
-                for group in range(first, first + block):
-                    prog.stream(f"input{lane}", a_sym, (ROWS * group + lane) * n,
-                                stride=ELEM, count=n)
+            for _, a_sym in products:
+                for lane in range(ROWS):
+                    for group in range(first, first + block):
+                        prog.stream(f"input{lane}", a_sym,
+                                    (ROWS * group + lane) * n,
+                                    stride=ELEM, count=n)
 
             # One word per row group on each lane, the accumulator's delayed
-            # output; the lanes interleave, hence the ROWS-element stride.
-            for lane in range(ROWS):
-                prog.out(f"output{lane}", out_sym, ROWS * first + lane,
-                         stride=ROWS * ELEM, count=block)
+            # output; the lanes interleave, hence the ROWS-element stride. A
+            # lane emits its A words before its B words, in the order its rows
+            # were streamed, so one descriptor per product per lane suffices.
+            for out_sym, _ in products:
+                for lane in range(ROWS):
+                    prog.out(f"output{lane}", out_sym, ROWS * first + lane,
+                             stride=ROWS * ELEM, count=block)
 
 
 def build(m_pad, n, io_map_matvec, io_map_scale, per_pass=None):
@@ -168,8 +199,10 @@ def build(m_pad, n, io_map_matvec, io_map_scale, per_pass=None):
     prog.conf_all()
 
     # ---- phase 0: the two matrix-vector products, one configuration ---------
-    matvec(prog, "vec_ax", "mat_a", n, row_groups, per_pass, fence_first=False)
-    matvec(prog, "vec_bx", "mat_b", n, row_groups, per_pass, fence_first=True)
+    # One preload of x per pass covers both products, so there is no barrier
+    # between them either; see matvec().
+    matvec(prog, (("vec_ax", "mat_a"), ("vec_bx", "mat_b")),
+           n, row_groups, per_pass)
 
     # ---- phase 1: vec_y = alpha*vec_ax + beta*vec_bx ------------------------
     # Lane k owns the k-th half of the vector; the lanes are independent, so any
@@ -205,9 +238,10 @@ both together. M is rounded up to a multiple of 4 here exactly as it is there.
     parser.add_argument("-n", "--cols", type=int, default=90,
                         help="columns of A and B (default: 90, PolyBench SMALL)")
     parser.add_argument("--groups-per-pass", type=int, metavar="G",
-                        help="row groups (of 4 rows) per pass, i.e. how many "
-                             "times x is replayed from one preload (default: "
-                             "the whole matrix, capped by the 8-bit iters field)")
+                        help="row groups (of 4 rows) per pass and per product; "
+                             "one preload of x is replayed twice that many "
+                             "times (default: the whole matrix, capped by the "
+                             "8-bit iters field)")
     parser.add_argument("--io-map-matvec",
                         default=os.path.join(_HERE, "gesummv_1_hv_io_map.json"),
                         help="io_map.json of the matrix-vector kernel "
@@ -237,9 +271,10 @@ both together. M is rounded up to a multiple of 4 here exactly as it is there.
         raise SystemExit(f"x is {n} words, past the {min(MAX_SIZE, MEM_DEPTH)} "
                          "a 9-bit size field and a 512-word scratchpad allow; "
                          "lower --cols")
-    if not 1 <= per_pass <= MAX_ITERS:
-        raise SystemExit(f"--groups-per-pass={per_pass}: a pass replays x that "
-                         f"many times, which must fit the {MAX_ITERS} the "
+    if not 1 <= per_pass * PRODUCTS <= MAX_ITERS:
+        raise SystemExit(f"--groups-per-pass={per_pass}: a pass replays x "
+                         f"{PRODUCTS} x {per_pass} times, once per row group of "
+                         f"each product, which must fit the {MAX_ITERS} the "
                          "8-bit iters field holds")
     for label, nbytes in (
             (f"a row stream (N = {n})", n * ELEM),
@@ -255,9 +290,9 @@ both together. M is rounded up to a multiple of 4 here exactly as it is there.
 
     passes = -(-row_groups // per_pass)
     note = (f"gesummv {m}x{n} (padded to {m_pad} rows): vec_ax = A@x and "
-            f"vec_bx = B@x under one configuration, {passes} pass(es) each of "
-            f"up to {per_pass} four-row groups, then behind a FENCE_SE "
-            f"vec_y = alpha*vec_ax + beta*vec_bx")
+            f"vec_bx = B@x under one configuration, {passes} pass(es) of up to "
+            f"{per_pass} four-row groups of each, sharing one preload of x, "
+            f"then behind a FENCE_SE vec_y = alpha*vec_ax + beta*vec_bx")
     prog.emit_c_header(args.output or "/dev/stdout",
                        includes=("strela.h", "matvec_kernel.h",
                                  "scale_add_kernel.h", "dataset.h"),

@@ -31,6 +31,13 @@ entries of y_1, y_2, x1 and x2 are zero, a padded line reduces to exactly 0, and
 the expected values below cover the padded shape (x1[i] = x2[i] = 0 for i >= N),
 which keeps the check a check instead of an exemption.
 
+y_1 and y_2 are emitted as the two halves of one `vec_y` array rather than as two
+arrays. Both products replay their vector out of the same scratchpad, and a
+scratchpad holds one contiguous block: keeping the pair adjacent lets the block
+be loaded once and each product re-point the replay at its own half, which is
+what removes the reload and the barrier between the two products
+(gen_descriptors.py says why that is safe).
+
 t1 and t2 are hand-offs between kernels -- written to memory by the matvec
 phase's OSEs and streamed back in by the add phase's ISEs -- so they carry the
 interleaved-section attribute like the arrays the CGRA reads from the start.
@@ -53,6 +60,7 @@ INT32_MAX = (1 << 31) - 1
 
 ROWS = 4           # accumulator lanes of mvt_1_hv = matrix lines per group
 LANES = 2          # independent lanes of mvt_2_hv, one per output vector
+PRODUCTS = 2       # A@y_1 and A^T@y_2, whose vectors share one scratchpad load
 
 # Descriptor/fabric limits that would otherwise wrap silently.
 MEM_DEPTH = 512    # scratchpad words (StrelaMemDepth, rtl/strela_pkg.sv)
@@ -102,12 +110,14 @@ N_PAD and the last N_PAD-N results of both vectors are zero by construction.
 
     n_pad = -(-n // ROWS) * ROWS
 
-    # Each product preloads its y vector into a 512-word scratchpad and replays
-    # it, so one vector is what has to fit -- not the matrix.
+    # Both y vectors are parked in one 512-word scratchpad and each product
+    # re-points the replay at its half, so the *pair* is what has to fit -- still
+    # not the matrix.
     limit = min(MAX_SIZE, MEM_DEPTH)
-    if n_pad > limit:
-        sys.exit(f"error: y is {n_pad} words, past the {limit} a 9-bit size "
-                 f"field and a {MEM_DEPTH}-word scratchpad allow; lower N")
+    if PRODUCTS * n_pad > limit:
+        sys.exit(f"error: y_1 and y_2 are {PRODUCTS * n_pad} words together, "
+                 f"past the {limit} a 9-bit size field and a {MEM_DEPTH}-word "
+                 "scratchpad allow; lower N")
     if n_pad > MAX_DELAY:
         sys.exit(f"error: N={n_pad} exceeds the {MAX_DELAY} an accumulator's "
                  "16-bit delay_value holds")
@@ -166,9 +176,10 @@ N_PAD and the last N_PAD-N results of both vectors are zero by construction.
     emit_array("int32_t", "mat_a", mat_a, "MVT_N_PAD * MVT_N_PAD",
                interleaved=True)
     print("")
-    emit_array("int32_t", "vec_y1", vec_y1, "MVT_N_PAD", interleaved=True)
-    print("")
-    emit_array("int32_t", "vec_y2", vec_y2, "MVT_N_PAD", interleaved=True)
+    # y_1 and y_2 are one array so that a single scratchpad load can hold both
+    # and each product re-points the replay at its half; see gen_descriptors.py.
+    emit_array("int32_t", "vec_y", vec_y1 + vec_y2, f"{PRODUCTS} * MVT_N_PAD",
+               interleaved=True)
     print("")
     emit_array("int32_t", "vec_x1_in", vec_x1_in, "MVT_N_PAD", interleaved=True)
     print("")

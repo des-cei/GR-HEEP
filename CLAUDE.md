@@ -334,16 +334,24 @@ Two families:
   has only **two** phases for three products, because `A@x` and `B@x` want the *same*
   configuration: the same reduction length `N` and the same PE constant. Keeping alpha and beta
   out of the matrix-vector kernel (they are applied once at the end, which is how PolyBench writes
-  it too) is what makes that true, so `B@x` is simply more passes of the bitstream `A@x` already
-  runs under, with one `FENCE_SE` between passes and one loaded copy of `matvec_kernel`. That is
+  it too) is what makes that true, so `B@x` is simply more rows through the bitstream `A@x` already
+  runs under, with one loaded copy of `matvec_kernel`. That is
   the exact counterpoint to `strela_2mm`, where the two matmuls reduce over different lengths and
-  therefore *cannot* share a load: **a phase is a configuration, not an operand.** Two smaller
+  therefore *cannot* share a load: **a phase is a configuration, not an operand.** The two products
+  are not even two *passes*: both reduce against the same `x`, so the one preload is replayed for
+  the row groups of both (`iters = 2*block`) and `B`'s rows simply queue behind `A`'s on each
+  engine. What keeps them apart without a barrier is the fabric, not the schedule — `x` reaches all
+  four lanes through one fork, so no lane can consume a row of `B` while another is still on `A`,
+  and the accumulators therefore emit `A`'s words before `B`'s on every lane. **A pass is a
+  scratchpad load, not a statement**, and the only `FENCE_SE` left is the phase boundary. Two
+  smaller
   points: `M` is padded up to a multiple of the fabric's 4 lanes (90 -> 92, zeroed rows, goldens
   computed over the padding so `y` must be exactly 0 there), and no output of either kernel is
   scratchpad-backed, so this app is free of the `MAX_GROUPS` race below and one pass covers the
   whole matrix. It is also the counter-example to `strela_doitgen`'s descriptor-fetch problem:
-  measured `TOT` 5139 with `TAB` 1728 (34%) and `STL` 201, because one descriptor here streams a
-  whole `N`=90 row for its fixed 12-byte fetch, and 5139 cycles for 2x92 rows of 90 is within ~25%
+  measured `TOT` 4961 with `TAB` 1578 (32%) and `STL` 110 (5139/1728/201 with the reload and the
+  barrier), because one descriptor here streams a
+  whole `N`=90 row for its fixed 12-byte fetch, and 4961 cycles for 2x92 rows of 90 is within ~20%
   of the 4140 the four lanes would take at one element per cycle. It defaults to PolyBench
   gesummv `SMALL_DATASET` (90x90), the same shape as
   `strela_gesummv_single` and `cpu_gesummv` — the three are directly comparable, and the older
@@ -368,10 +376,15 @@ Two families:
   Where the three differ is a clean three-way answer to **what forces a phase**. `strela_mvt`
   (PolyBench mvt `SMALL_DATASET`, 120x120, the same shape as `cpu_mvt`) has a **square** `A`, so
   `A@y_1` and `A^T@y_2` reduce over the same `N` and share **one** loaded configuration — the
-  transposed product is just more passes at a different stride — giving two phases for three
+  transposed product is just more lines at a different stride — giving two phases for three
   operations, the second being `mvt_2_hv`, a plain two-lane add (`x1 = x1_in + t1`,
   `x2 = x2_in + t2`) with neither constants nor accumulators, so nothing in that bitstream is
-  patched at all. `strela_atax` (116x124, the same shape as `cpu_atax`) has a **rectangular** `A`,
+  patched at all. It is also one *pass*, for the reason `strela_gesummv` explains, with the extra
+  wrinkle that the two products replay **different** vectors: `y_1` and `y_2` are emitted as the
+  two halves of one `vec_y` array (a scratchpad holds one contiguous block), parked together with
+  `iters=0`, and each product re-points the replay at its half with a param-only `mem_param()`.
+  A load would clobber the word `data_out` still presents and needs the barrier; a re-point does
+  not. `strela_atax` (116x124, the same shape as `cpu_atax`) has a **rectangular** `A`,
   so `tmp = A@x` reduces over `N` and `y = A^T@tmp` over `M`; `delay_value` *is* the reduction
   length and it lives in the bitstream, so the identical pair of products now needs one patched
   copy each and two phases — and it is a true chain, `tmp` being written by phase 0's OSEs and
@@ -382,7 +395,7 @@ Two families:
   `strela_gesummv` states: what splits a run into phases is a change of configuration, not a data
   dependence and not a direction. Measured `TOT` 8340 for both `strela_atax` and `strela_bicg`
   (identical, because the same `2*116*124` elements cross the fabric either way) with `TAB` ~26%
-  and `STL` ~4%, and 8615 for `strela_mvt`. All three pad both dimensions up to a multiple of 4
+  and `STL` ~4%, and 8566 for `strela_mvt`. All three pad both dimensions up to a multiple of 4
   with zeroed rows/columns and compute the goldens over the padding, and none of the five
   bitstreams has a scratchpad-backed output, so all three are free of the `MAX_GROUPS` race below
   and one pass covers the whole matrix. One data-generation trap worth copying from
@@ -563,7 +576,13 @@ apps past their original toy shapes:
   `ready_o` is already high, so the new `mem_param` is accepted, the FSM leaves for `S_WR`, and
   that word is never handed to the fabric. 8x16 in two passes of two rows deadlocks without the
   fence and passes with it — the same `valid_out` handoff as the `strela_gemm` limit above, seen
-  from the ISE side.
+  from the ISE side. What that argument covers is only the loads that **change**: the A/B row
+  blocks differ from pass to pass, `x` does not, so `x` is preloaded once for the whole run with
+  `iters = M/2` (one replay per output row) rather than reloaded per pass. A `FENCE_SE` waits on
+  the engines, it does not reset a scratchpad, so the pending replays survive every barrier.
+  Measured `TOT` 9393 -> **8659** (−7.8%) on that alone, which is more than the 8 saved descriptor
+  fetches are worth: the redundant loads also moved 8x90 words of real bus traffic on an engine
+  that carries a matrix block too.
 
 All apps follow X-HEEP's `PRINTF_IN_SIM`/`PRINTF_IN_FPGA` convention: printf output is generally
 enabled for FPGA runs and disabled for simulation (for speed) unless overridden per-app.
