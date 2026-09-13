@@ -187,8 +187,8 @@ Two families:
     the reasons `strela_fw` documents (non-negativity, and real shortest-path structure to find).
     The 2mm and doitgen generators derive a safe element range from the shape instead of the house
     ±50, because those kernels multiply deeply enough for the *golden* to wrap int32 otherwise.
-  - Signal/DSP twins (`cpu_dither_filter`, `cpu_fft`, `cpu_find2min`, `cpu_fir`, `cpu_fir8`,
-    `cpu_relu`): not PolyBench, so there is no `polybench_cpu.c` — the kernel is a `static`
+  - Signal/DSP twins (`cpu_dither_filter`, `cpu_fft`, `cpu_fft_st`, `cpu_find2min`, `cpu_fir`,
+    `cpu_fir8`, `cpu_relu`): not PolyBench, so there is no `polybench_cpu.c` — the kernel is a `static`
     function at the top of `main.c`, and `gen_data.py` mirrors its `strela_*` twin's generator
     closely enough to diff against it (same defaults, same seeded stimulus, same fixed-point
     conventions), which is the property that keeps the pair comparable. Two of them are
@@ -209,6 +209,11 @@ Two families:
     are single-pass kernels whose length is a free parameter, so raising the default is one
     `default=` in each generator (`gen_data.py` and, on the STRELA side, `gen_descriptors.py` —
     the two are run with no arguments by `make gen-app-data` and must be changed together).
+    `cpu_fft_st` is the one signal twin *off* that default on purpose: it is the port of
+    x-trela's `cpu_fft_nt` / `strela_fft_nt` pair and keeps their shape — **512 complex points**,
+    256 butterflies, 8-bit samples, in place over `real[]`/`imag[]` — so the two SoCs run the
+    same kernel on the same data volume. Do not raise it to 4096 without raising the x-trela
+    twin too.
   `cpu_mm` predates both groups: it is *not* a PolyBench kernel (it is the CPU twin of
   `strela_mm`, sharing its generator and its 64x64x64 default), has no `polybench_cpu.c` — the
   triple loop is inlined in `main.c` — and toggles GPIOs around the timed region.
@@ -227,7 +232,7 @@ Two families:
   app first, copy the hex aside, and run
   `Vtestharness +firmware=<abs path>` from a **separate working directory per run**, or the
   parallel runs will clobber each other's firmware, `uart0.log` and `waveform.fst`.
-- `strela_*` (`strela_mm`, `strela_fft`, `strela_gesummv_single`, `strela_gesummv`,
+- `strela_*` (`strela_mm`, `strela_fft`, `strela_fft_st`, `strela_gesummv_single`, `strela_gesummv`,
   `strela_gemm`, `strela_gemver`, `strela_2mm`,
   `strela_3mm`, `strela_doitgen`, `strela_atax`, `strela_bicg`, `strela_mvt`, `strela_fir`,
   `strela_fir8`, `strela_relu`, `strela_find2min`, `strela_dither_filter`, `strela_fw`,
@@ -244,8 +249,9 @@ Two families:
   `strela_mvt`, and every phase of `strela_2mm` / `strela_3mm` / `strela_gemver`
   come from the committed
   regress bitstreams via `scripts/regress2kernel.py`, not from a mapper run;
-  `strela_dither_filter` has no regress entry, so its header came from a real (few-minute) Gurobi
-  solve of `mapper/applications/dither_filter`, and `strela_fw` has one but **must not use it** —
+  `strela_dither_filter` and `strela_fft_st` have no regress entry, so their headers came from a
+  real (few-minute) Gurobi solve of `mapper/applications/dither_filter` / `fft_st`, and
+  `strela_fw` has one but **must not use it** —
   its DFG carries `border=` constraints the committed solve predates, exactly as
   `strela_gemver`'s carries `at=` pins, so `regress2kernel.py` would silently restore the slow
   binding.
@@ -276,6 +282,20 @@ Two families:
   amortises: `strela_fir` went 14.3x -> 19.5x and `strela_fft` 3.5x -> 10.7x between 100/32 and
   4096) while the last two do not — both families scale linearly, so 2.2x and 1.3x hold at every
   size.
+  `strela_fft_st` is `strela_fft` with the twiddle **stationary**: x-trela's `strela_fft_nt`
+  ported at its own parameters (512 complex points, 256 butterflies, 8-bit samples, in place
+  over `real[]`/`imag[]` with `a` in the first half and `b` in the second) so the two SoCs run
+  the same kernel, and it is the app to read for **a constant that is part of the bitstream
+  and nothing else**. `fft_st/main.dot` bakes `w = 5 + 3i` into its four `mul` PEs
+  (`constant=`, `constant_fu_input=2`), so there is no twiddle table, no scratchpad, no Q
+  format and no `set_pe_*` call — four north streams in, four south streams out, one
+  descriptor per engine, no barrier. `gen_data.py`'s `W_RE`/`W_IM` mirror the DFG and must
+  change with it. In place is safe because every output word depends only on the input words
+  at its own butterfly index, which the fabric has consumed before the OSE has anything to
+  write. Measured `TOT` 387 with `CFG` 23, `TAB` 147 and `STL` 260, identical on Verilator and
+  on the Genesys2 — i.e. the ~130-cycle floor plus one butterfly per cycle, memory-paced like
+  `strela_fft` — against 7177 for `cpu_fft_st`, **18.5x**. It has no regress entry and no
+  `border=`/`at=` constraints, so a re-solve is a plain mapper run (~5 min).
   `strela_gemm` is the fifth shape and the simplest **chained** app: PolyBench gemm split over two
   bitstreams that run back to back in one execution — `gemm_1_hv` (byte-identical to `mm_hv`, so
   phase 0 is `strela_mm`'s schedule writing a temporary `matAB`) and then `gemm_2_hv`
