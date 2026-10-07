@@ -58,6 +58,9 @@ TEST_FLAGS=
 # Software
 PROJECT := hello_world
 
+# Compiler prefix options are 'riscv32-corev-' (default) and 'riscv32-unknown-'
+COMPILER_PREFIX ?= $(shell basename $$(ls $(RISCV_XHEEP)/bin/*gcc 2>/dev/null | head -1) | sed 's/elf-gcc$$//')
+
 # Vendor
 MODULE_NAME ?= x-heep
 
@@ -213,6 +216,7 @@ export PADS_CFG
 export EXTERNAL_DOMAINS
 export XHEEP_CONFIG_CACHE
 export PROJECT
+export COMPILER_PREFIX
 
 # Include X-HEEP targets
 XHEEP_MAKE = $(HEEP_DIR)/external.mk
