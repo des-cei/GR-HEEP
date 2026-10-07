@@ -1,0 +1,27 @@
+{
+  "inputs": {
+    "input0": {
+      "channel": 1,
+      "location": [
+        "pe",
+        1,
+        "north"
+      ],
+      "address": "0x200",
+      "stride": 4,
+      "size": 100
+    }
+  },
+  "outputs": {
+    "output0": {
+      "channel": 1,
+      "location": [
+        "pe",
+        13,
+        "south"
+      ],
+      "address": "0x400",
+      "size": 100
+    }
+  }
+}

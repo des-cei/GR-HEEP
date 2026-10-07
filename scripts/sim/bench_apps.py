@@ -39,7 +39,7 @@
 #
 # Usage:
 #   python3 scripts/sim/bench_apps.py
-#   python3 scripts/sim/bench_apps.py --apps strela_fir cpu_fir --jobs 4
+#   python3 scripts/sim/bench_apps.py --apps strela_v2_fir cpu_fir --jobs 4
 #   python3 scripts/sim/bench_apps.py --rerun            # reuse the built hexes
 #   python3 scripts/sim/bench_apps.py --report-only      # re-parse a finished run
 
@@ -62,9 +62,9 @@ VERILATOR_MODEL = (
     REPO_ROOT / "build" / "x-heep_systems_gr-heep_0" / "sim-verilator" / "Vtestharness"
 )
 
-# Apps that are not benchmarks: strela_test is a bring-up/bypass app and
-# strela_fully_connected is a legacy TFLM-style app with no golden dataset.
-EXCLUDED = {"strela_test", "strela_fully_connected"}
+# Apps that are not benchmarks: strela_v2_test is a bring-up/bypass app and
+# strela_v2_fully_connected is a legacy TFLM-style app with no golden dataset.
+EXCLUDED = {"strela_v2_test", "strela_v2_fully_connected"}
 
 # strela_<name> -> cpu_<name> wherever the two families disagree on the name.
 TWIN_OVERRIDES = {
@@ -130,8 +130,14 @@ def discover_apps(selection):
 
 
 def twin_of(strela_app):
-    """The cpu_* app a strela_* app should be compared against, if any."""
+    """The cpu_* app a strela_* app should be compared against, if any.
+
+    Both generations (strela_v1_<name>, strela_v2_<name>) pair with cpu_<name>.
+    """
     kernel = strela_app.split("_", 1)[1]
+    for version in ("v1_", "v2_"):
+        if kernel.startswith(version):
+            kernel = kernel[len(version):]
     return "cpu_" + TWIN_OVERRIDES.get(kernel, kernel)
 
 

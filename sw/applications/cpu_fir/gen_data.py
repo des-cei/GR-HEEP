@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate the CPU 4-tap FIR test data header.
 
-The software twin of strela_fir: same filter, same stimulus, same defaults, so
+The software twin of strela_v2_fir: same filter, same stimulus, same defaults, so
 the cycle counts of the two apps are directly comparable.
 
     y[n] = (h0*x[n] + h1*x[n-1] + h2*x[n-2] + h3*x[n-3]) >> 8
@@ -33,7 +33,7 @@ import sys
 
 INT32_MAX = (1 << 31) - 1
 
-TAPS = [32, 96, 96, 32]     # Q8, the same constants strela_fir bakes into its PEs
+TAPS = [32, 96, 96, 32]     # Q8, the same constants strela_v2_fir bakes into its PEs
 SHIFT = 8
 
 
@@ -72,7 +72,7 @@ def main():
         description="Generate the CPU 4-tap FIR test data header.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""\
-The defaults match strela_fir's, which is the point of this app: change N here
+The defaults match strela_v2_fir's, which is the point of this app: change N here
 and the CPU baseline no longer measures the same work as the accelerator.
 """)
     parser.add_argument("N", type=int, nargs="?", default=4096,

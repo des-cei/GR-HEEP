@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Generate the CPU ReLU test data header.
 
-The software twin of strela_relu: same elementwise kernel, same stimulus, same
+The software twin of strela_v2_relu: same elementwise kernel, same stimulus, same
 defaults, so the cycle counts of the two apps are directly comparable.
 
     y = x > 0 ? x : 0          i.e. y = max(x, 0)
 
-Layout: strela_relu splits the array into four lanes because the DFG unrolls by
+Layout: strela_v2_relu splits the array into four lanes because the DFG unrolls by
 four (four cmp/select pairs over contiguous slices of one flat array), and the
 lanes are kept here as well -- not because the CPU cares, but so that both apps
 run over the same RELU_SAMPLES = RELU_LANES * RELU_PER_LANE elements and the
@@ -28,7 +28,7 @@ import sys
 
 INT32_MAX = (1 << 31) - 1
 
-LANES = 4          # fixed by strela_relu's DFG; kept so the shapes match
+LANES = 4          # fixed by strela_v2_relu's DFG; kept so the shapes match
 
 
 def relu(x):
@@ -54,7 +54,7 @@ def main():
         description="Generate the CPU ReLU test data header.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""\
-The defaults match strela_relu's, which is the point of this app: change N here
+The defaults match strela_v2_relu's, which is the point of this app: change N here
 and the CPU baseline no longer measures the same work as the accelerator.
 """)
     parser.add_argument("N", type=int, nargs="?", default=1024,
@@ -88,7 +88,7 @@ and the CPU baseline no longer measures the same work as the accelerator.
     print("#include <stdint.h>")
     print("")
     print("#define DATA_TYPE       int32_t")
-    print(f"#define RELU_LANES      {LANES}   /* strela_relu's DFG unroll */")
+    print(f"#define RELU_LANES      {LANES}   /* strela_v2_relu's DFG unroll */")
     print(f"#define RELU_PER_LANE   {n}")
     print(f"#define RELU_SAMPLES    {total}  /* = RELU_LANES * RELU_PER_LANE */")
     print("")

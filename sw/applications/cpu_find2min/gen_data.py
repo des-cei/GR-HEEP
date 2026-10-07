@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate the CPU find-two-minima test data header.
 
-The software twin of strela_find2min: same reduction, same stimulus, same
+The software twin of strela_v2_find2min: same reduction, same stimulus, same
 defaults, so the cycle counts of the two apps are directly comparable.
 
     result[0] = min1   result[1] = min2   result[2] = idx1   result[3] = idx2
@@ -22,7 +22,7 @@ displace it, so on duplicates the *earliest* occurrence wins the index.
 
 The sentinel: the fabric seeds its trackers with a real token that flows through
 the demotion path, so the seed must be larger than every element or it would end
-up in the answer; strela_find2min patches INT32_MAX in with
+up in the answer; strela_v2_find2min patches INT32_MAX in with
 set_pe_initial_value. The CPU has the same requirement for the same reason and
 uses the same value, emitted here so the two cannot drift.
 
@@ -36,7 +36,7 @@ import sys
 
 INT32_MAX = (1 << 31) - 1
 
-# The same seed strela_find2min programs into its two min-tracker PEs.
+# The same seed strela_v2_find2min programs into its two min-tracker PEs.
 SENTINEL = INT32_MAX
 
 
@@ -73,7 +73,7 @@ def main():
         description="Generate the CPU find-two-minima test data header.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""\
-The defaults match strela_find2min's, which is the point of this app: change N
+The defaults match strela_v2_find2min's, which is the point of this app: change N
 here and the CPU baseline no longer measures the same work as the accelerator.
 """)
     parser.add_argument("N", type=int, nargs="?", default=4096,

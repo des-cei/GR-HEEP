@@ -23,7 +23,7 @@
    mask feeds ~10^9-sized values into the threshold and every output flips.
 
    `err` is a loop-carried dependence, which is the whole point of comparing
-   this app against strela_dither_filter: the fabric closes the same feedback
+   this app against strela_v2_dither_filter: the fabric closes the same feedback
    inside itself and is bound by that ring rather than by its streams. */
 static void dither_cpu(int n, volatile DATA_TYPE *in, volatile DATA_TYPE *out)
 {

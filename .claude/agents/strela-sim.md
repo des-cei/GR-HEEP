@@ -19,7 +19,7 @@ context — read the logs yourself, return only what matters.
 
 ## Inputs
 
-- `PROJECT` — a directory under `sw/applications/`, e.g. `strela_fft`. Required.
+- `PROJECT` — a directory under `sw/applications/`, e.g. `strela_v2_fft`. Required.
 - `REBUILD` — optional; force the Verilator model rebuild even if it looks fresh.
 
 ## Environment
@@ -45,7 +45,9 @@ looks like a build failure but is really an unset environment.
    ```
    This takes several minutes. If `cgra.sv` is missing entirely, run
    `scripts/gr_heep_env.sh make -C hw/vendor/strela-v2 cgra-gen` first
-   (default `CGRA_CONFIG=configs/4x4-HV.hjson`, the only one STRELA accepts).
+   (default `CGRA_CONFIG=configs/4x4-HV.hjson`, the only one STRELA v2 accepts).
+   STRELA v1's fabric top (`hw/vendor/strela-v1/rtl/strela_v1_cgra.sv`) is
+   committed and needs no generation.
    On failure, grep the log for the first `%Error`/`Error:`/`error:` and report
    that line with its file:line. Do not paste the log.
 
@@ -80,13 +82,14 @@ looks like a build failure but is really an unset environment.
      The fabric stalled and the app never returned from `wait_for_interrupt()`;
      nothing would have ended that simulation on its own.
      This is plumbing, not arithmetic. Point the caller at the deadlock checklist
-     in the `strela-app` skill (TR_CONF on all four ISEs, every io_map port
+     in the `strela-v2-app` skill (TR_CONF on all four ISEs, every io_map port
      driven, `mem()` before `stream()` on a doubled-up ISE, `size % stride == 0`,
      replay count matching the stream length).
    - Compile error → **BUILD FAILED**, with the first error line.
 
 4. **Collect the performance counters** the STRELA apps print: `TOT` (total
-   cycles), `CFG` (configuration), `TAB` (descriptor table fetch), `STL` (stall).
+   cycles), `CFG` (configuration), `TAB` (descriptor table fetch), `STL` (stall)
+   for `strela_v2_*`; `strela_v1_*` prints `EXE` (execution) instead of `TAB`.
    Report them as-is for a PASS.
 
 ## Report (~10-12 lines, nothing more)
@@ -94,7 +97,7 @@ looks like a build failure but is really an unset environment.
 - **Verdict:** `PASS`, `WRONG RESULT`, `DEADLOCK`, `BUILD FAILED`, or `GEN FAILED`.
 - **Project** and whether the Verilator model was rebuilt (and why).
 - **UART output**: the app's own lines, quoted — they are short by design.
-- **Counters:** TOT / CFG / TAB / STL for a run that completed.
+- **Counters:** TOT / CFG / TAB (v2) or EXE (v1) / STL for a run that completed.
 - **Diagnosis:** for anything but PASS, the specific error line plus which class
   of cause it points at (arithmetic vs plumbing vs environment).
 - **Logs:** `/tmp/strela-sim-build.log`, `/tmp/strela-sim-run.log`.

@@ -6,7 +6,7 @@ import random
 
 # Default problem size, so the script runs with no arguments (make gen-app-data):
 # PolyBench 4.2.1 SMALL_DATASET (linear-algebra/kernels/bicg), the same shape as
-# strela_bicg so the two are directly comparable. A is N x M -- the two are not
+# strela_v2_bicg so the two are directly comparable. A is N x M -- the two are not
 # interchangeable, and the argument order (M then N) follows PolyBench's.
 DEFAULT_M = 116
 DEFAULT_N = 124

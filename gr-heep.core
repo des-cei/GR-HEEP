@@ -13,6 +13,7 @@ filesets:
     - x-heep::packages
     - x-heep:ip:pad_control
     - openhwgroup.org:systems:core-v-mini-mcu
+    - ceimmupm:accelerators:strela-v1
     - ceimmupm:accelerators:strela-v2
     files:
     - hw/gr-heep/gr_heep_pkg.sv
@@ -77,7 +78,7 @@ filesets:
   
   ip-fpga:
     files:
-    - hw/fpga_ext/scripts/generate_strela_sram.tcl:  { file_type: tclSource }
+    - hw/fpga_ext/scripts/generate_strela_v2_sram.tcl:  { file_type: tclSource }
 
   # Scripts for hooks
   pre_build_remote_bitbang:

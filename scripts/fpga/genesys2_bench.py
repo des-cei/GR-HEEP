@@ -40,7 +40,7 @@
 # Usage:
 #   scripts/gr_heep_env.sh python3 scripts/fpga/genesys2_bench.py
 #   scripts/gr_heep_env.sh python3 scripts/fpga/genesys2_bench.py \
-#       --apps strela_fir cpu_fir
+#       --apps strela_v2_fir cpu_fir
 #   # size sweep, for the cpu_* apps whose gen_data.py takes dimensions:
 #   scripts/gr_heep_env.sh python3 scripts/fpga/genesys2_bench.py \
 #       --apps cpu_gemm cpu_threemm --sizes 16 32 64

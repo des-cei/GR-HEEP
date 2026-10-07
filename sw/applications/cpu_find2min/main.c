@@ -20,7 +20,7 @@
 /* The two smallest values and their indices.
 
    This is deliberately *not* the usual `if (v < min1) {...} else if (v < min2)
-   {...}` scan. strela_find2min's fabric runs three coupled trackers, each
+   {...}` scan. strela_v2_find2min's fabric runs three coupled trackers, each
    reading its own previous output, so the min2 tracker sees min1 as it was
    before this element updated it and only accepts the demoted candidate when
    `min2 > cand` strictly. On duplicates the two formulations disagree on idx2

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate the CPU FFT butterfly test data header.
 
-The software twin of strela_fft: same stage, same layout, same defaults, so the
+The software twin of strela_v2_fft: same stage, same layout, same defaults, so the
 cycle counts of the two apps are directly comparable.
 
 One radix-2 DIT stage of an FFT_POINTS-point transform. For every butterfly:
@@ -10,7 +10,7 @@ One radix-2 DIT stage of an FFT_POINTS-point transform. For every butterfly:
     x = a + t        y = a - t
 
 Layout: the two operands of each butterfly are presented as separate,
-deinterleaved arrays, exactly as strela_fft needs them -- within block k of
+deinterleaved arrays, exactly as strela_v2_fft needs them -- within block k of
 FFT_BLOCK points, butterfly j pairs sample k*FFT_BLOCK + j (the `a` operand)
 with k*FFT_BLOCK + j + FFT_BLOCK/2 (the `b` operand), ordered block by block
 with j fastest. On the CPU that ordering buys nothing on its own; it is kept so
@@ -75,7 +75,7 @@ def main():
         description="Generate the CPU FFT butterfly test data header.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""\
-The defaults match strela_fft's -- one middle stage of a 4096-point FFT: 64
+The defaults match strela_v2_fft's -- one middle stage of a 4096-point FFT: 64
 blocks of 64 points, 32 twiddles replayed 64 times, 2048 butterflies. --block
 FFT_POINTS gives the final stage (one block, no replay); --block 2 gives the
 first (a single twiddle, W^0). Changing them here means the CPU baseline no

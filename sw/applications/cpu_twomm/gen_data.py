@@ -6,7 +6,7 @@ import random
 
 # Default problem size, so the script runs with no arguments (make gen-app-data):
 # PolyBench 4.2.1 SMALL_DATASET (linear-algebra/kernels/2mm), the same shape as
-# strela_2mm so the two are directly comparable.
+# strela_v2_2mm so the two are directly comparable.
 DEFAULT_NI = 40
 DEFAULT_NJ = 50
 DEFAULT_NK = 70

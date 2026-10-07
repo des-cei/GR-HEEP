@@ -21,7 +21,7 @@
    block k reads a[i], b[i] and twiddle i % FFT_TWIDDLES -- so the loop nest
    walks blocks then butterflies and the twiddle index comes for free, no
    modulo. No rescale anywhere: the twiddles are QFFT_FRAC_BITS and `a` is
-   emitted pre-scaled, matching strela_fft, whose datapath has no shifter. */
+   emitted pre-scaled, matching strela_v2_fft, whose datapath has no shifter. */
 static void fft_stage_cpu(int blocks, int half,
                           volatile DATA_TYPE *a_re, volatile DATA_TYPE *a_im,
                           volatile DATA_TYPE *b_re, volatile DATA_TYPE *b_im,

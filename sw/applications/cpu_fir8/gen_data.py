@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Generate the CPU 8-tap FIR test data header.
 
-The software twin of strela_fir8: same filter, same stimulus, same defaults, so
+The software twin of strela_v2_fir8: same filter, same stimulus, same defaults, so
 the cycle counts of the two apps are directly comparable.
 
     y[n] = (SUM_k h[k]*x[n-k]) >> 8,   k < 8
 
 with the Q8 band-pass h = [2, -14, 42, -70, 70, -42, 14, -2] / 256, the
-antisymmetric differentiator-like kernel strela_fir8 was solved for. STRELA
+antisymmetric differentiator-like kernel strela_v2_fir8 was solved for. STRELA
 bakes them into the bitstream as per-PE constants; here they are emitted as a
 `static const` array, which is the one place they are written down, so main.c
 and this reference cannot drift.
@@ -34,7 +34,7 @@ import sys
 
 INT32_MAX = (1 << 31) - 1
 
-TAPS = [2, -14, 42, -70, 70, -42, 14, -2]   # Q8, as strela_fir8 bakes them in
+TAPS = [2, -14, 42, -70, 70, -42, 14, -2]   # Q8, as strela_v2_fir8 bakes them in
 SHIFT = 8
 
 
@@ -73,7 +73,7 @@ def main():
         description="Generate the CPU 8-tap FIR test data header.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""\
-The defaults match strela_fir8's, which is the point of this app: change N here
+The defaults match strela_v2_fir8's, which is the point of this app: change N here
 and the CPU baseline no longer measures the same work as the accelerator.
 """)
     parser.add_argument("N", type=int, nargs="?", default=4096,

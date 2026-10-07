@@ -18,7 +18,7 @@
 #endif
 
 /* Transposed-form FIR with zero initial state, one output per input -- the same
-   boundary condition the DFG's initial_valid preloads give strela_fir. The
+   boundary condition the DFG's initial_valid preloads give strela_v2_fir. The
    accumulation is exact int32 and the single arithmetic right shift happens at
    the end, never per tap. */
 static void fir_cpu(int n, int taps, int shift,

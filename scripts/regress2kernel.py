@@ -9,8 +9,9 @@
 """Rebuild an app's C kernel header from a *committed* elastic-cgra bitstream.
 
 `rtl/elastic-cgra/regress/<fabric>/<app>/` holds a committed `bitstream.bin` and
-`io_map.json` for 21 HV kernels. The io_map already carries the `location`
-fields `strela_bind` needs, and `CGRA.load_bin()` replays the bitstream into the
+`io_map.json` for 21 HV kernels (STRELA v2) and for the plain 4x4 fabric
+(STRELA v1, `--fabric 4x4`). The io_map already carries the `location`
+fields `strela_v2_bind` needs, and `CGRA.load_bin()` replays the bitstream into the
 same in-memory model `CGRA.write_c_header()` emits from -- so the kernel header
 can be regenerated without Gurobi and without the ~10 minute mapper solve.
 
@@ -23,7 +24,7 @@ Use the mapper (`make -C rtl/elastic-cgra map-bitstream`) only for a DFG with no
 committed bitstream, or after changing a DFG.
 
     scripts/gr_heep_env.sh python3 scripts/regress2kernel.py gesummv_hv \\
-        -o sw/applications/strela_gesummv/gesummv_hv_kernel.h
+        -o sw/applications/strela_v2_gesummv/gesummv_hv_kernel.h
 """
 
 import argparse
@@ -44,8 +45,9 @@ def main():
     ap.add_argument("--cgra-root", default=_CGRA,
                     help="elastic-cgra checkout (default: the vendored one)")
     ap.add_argument("--fabric", default="4x4-HV",
-                    help="fabric config name (default: 4x4-HV, the only one "
-                         "the STRELA shell accepts)")
+                    help="fabric config name: 4x4-HV for STRELA v2 (default) "
+                         "or 4x4 for STRELA v1, the only ones their shells "
+                         "accept")
     ap.add_argument("--array-name",
                     help="C array name (default: <app>_kernel)")
     ap.add_argument("-o", "--output", required=True,
@@ -88,7 +90,7 @@ def main():
         io_map = json.load(fh)
 
     array_name = c_identifier(args.array_name or f"{args.app}_kernel")
-    # The first line must match strela_lint.py's PROVENANCE regex -- that is how
+    # The first line must match strela_v2_lint.py's PROVENANCE regex -- that is how
     # `make lint-kernel` finds the DFG to check the bitstream against. It is the
     # honest provenance of the *bitstream*; the second line records how this
     # header was produced from it.
@@ -99,6 +101,15 @@ def main():
 
     os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
     cgra.write_c_header(array_name, args.output, io_map=io_map, source=source)
+    if not has_hv:
+        # The writer sizes every array with CONFIG_SIZE, which strela.h defines
+        # for STRELA v2's bitstream (router words included). A fabric without
+        # routers is STRELA v1's, whose length is STRELA_V1_CONFIG_SIZE.
+        with open(args.output, encoding="utf-8") as fh:
+            header = fh.read()
+        with open(args.output, "w", encoding="utf-8") as fh:
+            fh.write(header.replace(f"{array_name}[CONFIG_SIZE]",
+                                    f"{array_name}[STRELA_V1_CONFIG_SIZE]"))
 
     # Round-trip: if the model did not decode the bitstream faithfully, the
     # header would be wrong in ways only a deadlock would reveal.
@@ -118,7 +129,8 @@ def main():
     print(f"bitstream : {os.path.relpath(bin_path)}")
     print(f"io_map    : {os.path.relpath(iomap_path)}  "
           f"(copy it next to the header)")
-    print(f"header    : {args.output} (array {array_name}[CONFIG_SIZE])")
+    size = "CONFIG_SIZE" if has_hv else "STRELA_V1_CONFIG_SIZE"
+    print(f"header    : {args.output} (array {array_name}[{size}])")
     print("round-trip: OK (re-emitted bitstream is byte-identical)")
 
 

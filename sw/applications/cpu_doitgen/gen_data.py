@@ -6,8 +6,8 @@ import random
 
 # Default problem size, so the script runs with no arguments (make gen-app-data):
 # PolyBench 4.2.1 SMALL_DATASET (linear-algebra/kernels/doitgen), the same shape
-# as strela_doitgen so the two are directly comparable. Positional arguments are
-# NR NQ NP, in that order, matching strela_doitgen's.
+# as strela_v2_doitgen so the two are directly comparable. Positional arguments are
+# NR NQ NP, in that order, matching strela_v2_doitgen's.
 DEFAULT_NR = 25
 DEFAULT_NQ = 20
 DEFAULT_NP = 30
@@ -48,7 +48,7 @@ def doitgen_polybench(NR, NQ, NP, A, C4):
 
     The (r, q) pairs are independent and each contracts one contiguous length-NP
     row of A, so this is really an (NR*NQ) x NP by NP x NP matrix product -- which
-    is exactly what strela_doitgen runs on the fabric.
+    is exactly what strela_v2_doitgen runs on the fabric.
     """
     out = list(A)
     for r in range(NR):

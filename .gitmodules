@@ -1,3 +1,6 @@
 [submodule "hw/vendor/strela-v2"]
 	path = hw/vendor/strela-v2
 	url = git@github.com:des-cei/strela-v2.git
+[submodule "hw/vendor/strela-v1"]
+	path = hw/vendor/strela-v1
+	url = git@github.com:des-cei/strela-v1.git

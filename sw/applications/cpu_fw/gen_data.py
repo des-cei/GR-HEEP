@@ -5,8 +5,8 @@ import sys
 
 # Default problem size, so the script runs with no arguments (make gen-app-data):
 # PolyBench 4.2.1 MINI_DATASET (medley/floyd-warshall). This is the one CPU app
-# that is not on SMALL: it exists as the baseline for strela_fw, whose
-# descriptor tables do not fit at SMALL (see strela_fw/gen_descriptors.py), and
+# that is not on SMALL: it exists as the baseline for strela_v2_fw, whose
+# descriptor tables do not fit at SMALL (see strela_v2_fw/gen_descriptors.py), and
 # a baseline is only worth reading at the shape the accelerator actually runs.
 DEFAULT_N = 60
 
@@ -21,7 +21,7 @@ N = _arg(1, DEFAULT_N)
 def init_array(n):
     """PolyBench's own init_array, not a random draw.
 
-    Two reasons, both inherited from strela_fw. The relaxation only ever lowers
+    Two reasons, both inherited from strela_v2_fw. The relaxation only ever lowers
     entries, so a non-negative initial matrix keeps every intermediate
     non-negative and bounded by its maximum; and PolyBench's mix of short edges
     with a 999 "no edge" sentinel leaves real shortest-path structure for the

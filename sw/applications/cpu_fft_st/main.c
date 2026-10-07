@@ -20,7 +20,7 @@
 /* One radix-2 butterfly stage with a single, stationary twiddle w = (w_re,
    w_im), in place: butterfly i pairs sample i (`a`) with sample i + g (`b`),
    x = a + w*b lands on a's slot and y = a - w*b on b's -- the same words in
-   the same order as strela_fft_st, whose fabric holds the twiddle as PE
+   the same order as strela_v2_fft_st, whose fabric holds the twiddle as PE
    constants. The loop is x-trela's cpu_fft_nt one. No rescale anywhere: the
    twiddle is a pair of small integers, not a Q-format table. */
 static void fft_st_cpu(int g, DATA_TYPE w_re, DATA_TYPE w_im,

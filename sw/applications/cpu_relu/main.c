@@ -20,7 +20,7 @@
 /* Elementwise max(x, 0). The compare is strictly `> 0`, like the DFG's, so an
    input of exactly zero takes the false branch -- the same answer by the other
    path, and the stimulus plants a zero in every lane to exercise it. One flat
-   loop: the four lanes exist in strela_relu because the fabric unrolls by four,
+   loop: the four lanes exist in strela_v2_relu because the fabric unrolls by four,
    and on the CPU they are just contiguous slices of the same array. */
 static void relu_cpu(int n, volatile DATA_TYPE *x, volatile DATA_TYPE *y)
 {

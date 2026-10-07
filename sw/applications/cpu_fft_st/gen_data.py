@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate the CPU stationary-twiddle FFT butterfly test data header.
 
-The software twin of strela_fft_st: same stage, same layout, same defaults, so
+The software twin of strela_v2_fft_st: same stage, same layout, same defaults, so
 the cycle counts of the two apps are directly comparable.
 
 One radix-2 butterfly stage with a single twiddle factor w = (W_RE, W_IM): for
@@ -62,7 +62,7 @@ def main():
                     "data header.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""\
-The defaults match strela_fft_st's -- x-trela's strela_fft_nt shape: 512
+The defaults match strela_v2_fft_st's -- x-trela's strela_fft_nt shape: 512
 complex points, i.e. 256 butterflies pairing real/imag[i] with
 real/imag[i + 256], on 8-bit samples. Changing them here means the CPU
 baseline no longer measures the same work as the accelerator.

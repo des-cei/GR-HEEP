@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate the CPU 1-D error-diffusion dither test data header.
 
-The software twin of strela_dither_filter: same filter, same stimulus, same
+The software twin of strela_v2_dither_filter: same filter, same stimulus, same
 defaults, so the cycle counts of the two apps are directly comparable.
 
     err = 0;
@@ -16,7 +16,7 @@ i.e. a threshold with error feedback, so a smooth grey ramp comes out as a
 black/white pattern whose *local density* tracks the input intensity.
 
 This is the interesting one to compare against the accelerator, and the reason
-is the loop-carried dependence. strela_dither_filter is the app in the suite
+is the loop-carried dependence. strela_v2_dither_filter is the app in the suite
 that is **recurrence-bound**: its error feedback is closed inside the fabric
 (select0's initial_valid seed circulating through add0 -> cmp0 -> select0)
 rather than accumulated in a delay counter, so its throughput is set by a 3-hop
@@ -48,7 +48,7 @@ import sys
 INT32_MIN = -(1 << 31)
 INT32_MAX = (1 << 31) - 1
 
-THRESHOLD = 127     # the same constants strela_dither_filter bakes into its PEs
+THRESHOLD = 127     # the same constants strela_v2_dither_filter bakes into its PEs
 LEVEL = 255
 
 
@@ -103,7 +103,7 @@ def main():
         description="Generate the CPU error-diffusion dither test data header.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""\
-The defaults match strela_dither_filter's, which is the point of this app:
+The defaults match strela_v2_dither_filter's, which is the point of this app:
 change N here and the CPU baseline no longer measures the same work as the
 accelerator.
 """)

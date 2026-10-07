@@ -15,7 +15,7 @@
 # also keeps each step a single allowlistable command.
 #
 # Usage: scripts/gr_heep_env.sh <command> [args...]
-#   e.g. scripts/gr_heep_env.sh make app PROJECT=strela_fft
+#   e.g. scripts/gr_heep_env.sh make app PROJECT=strela_v2_fft
 
 set -e
 

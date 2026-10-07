@@ -1,0 +1,1 @@
+../../../../../hw/vendor/strela-v2/sw/strela_v2_regs.h
