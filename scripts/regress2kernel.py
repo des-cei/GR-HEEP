@@ -33,7 +33,7 @@ import sys
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _CGRA = os.path.abspath(os.path.join(
-    _HERE, "..", "hw", "vendor", "ceimm_upm_strela", "rtl", "elastic-cgra"))
+    _HERE, "..", "hw", "vendor", "strela-v2", "rtl", "elastic-cgra"))
 
 
 def main():

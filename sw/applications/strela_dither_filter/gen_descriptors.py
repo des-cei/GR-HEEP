@@ -6,7 +6,7 @@ that pairs with the bitstream, resolved by STRELA's shared binding layer. There
 is no committed regress bitstream for this kernel, so both artifacts come from a
 real mapper run:
 
-    CG=hw/vendor/ceimm_upm_strela/rtl/elastic-cgra
+    CG=hw/vendor/strela-v2/rtl/elastic-cgra
     make -C $CG map-bitstream PROJECT=dither_filter CGRA_CONFIG=configs/4x4-HV.hjson
     cp $CG/build/bitstream/dither_filter_kernel.h   sw/applications/strela_dither_filter/
     cp $CG/build/bitstream/dither_filter_io_map.json sw/applications/strela_dither_filter/
@@ -47,7 +47,7 @@ import sys
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _STRELA_SW = os.path.abspath(os.path.join(
-    _HERE, "..", "..", "..", "hw", "vendor", "ceimm_upm_strela", "sw"))
+    _HERE, "..", "..", "..", "hw", "vendor", "strela-v2", "sw"))
 sys.path.insert(0, _STRELA_SW)
 
 from strela_desc import StreamProgram  # noqa: E402

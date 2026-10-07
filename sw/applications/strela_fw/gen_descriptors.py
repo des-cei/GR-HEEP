@@ -10,10 +10,10 @@ and the whole app is one bitstream run over and over. The bitstream comes from a
 mapper solve of `mapper/applications/fw_hv`, **not** from the committed regress
 entry -- see "Why the DFG pins the borders" below:
 
-    scripts/gr_heep_env.sh make -C hw/vendor/ceimm_upm_strela/rtl/elastic-cgra \\
+    scripts/gr_heep_env.sh make -C hw/vendor/strela-v2/rtl/elastic-cgra \\
         map-bitstream PROJECT=fw_hv CGRA_CONFIG=configs/4x4-HV.hjson \\
         ARRAY_NAME=fw_kernel
-    CG=hw/vendor/ceimm_upm_strela/rtl/elastic-cgra
+    CG=hw/vendor/strela-v2/rtl/elastic-cgra
     cp $CG/build/bitstream/fw_hv_kernel.h sw/applications/strela_fw/fw_kernel.h
     cp $CG/build/bitstream/fw_hv_io_map.json \\
         sw/applications/strela_fw/fw_hv_io_map.json
@@ -169,7 +169,7 @@ from collections import Counter
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _STRELA_SW = os.path.abspath(os.path.join(
-    _HERE, "..", "..", "..", "hw", "vendor", "ceimm_upm_strela", "sw"))
+    _HERE, "..", "..", "..", "hw", "vendor", "strela-v2", "sw"))
 sys.path.insert(0, _STRELA_SW)
 
 from strela_desc import StreamProgram  # noqa: E402

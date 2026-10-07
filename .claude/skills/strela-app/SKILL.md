@@ -30,7 +30,7 @@ failure. The wrapper loads conda's shell hook first.
 
 ## 1. Read the DFG before anything else
 
-`hw/vendor/ceimm_upm_strela/rtl/elastic-cgra/mapper/applications/<app>/main.dot`
+`hw/vendor/strela-v2/rtl/elastic-cgra/mapper/applications/<app>/main.dot`
 is the contract. Its header comment names what each port means; you cannot infer
 it from the io_map, which only says *where* the mapper put each port.
 
@@ -68,7 +68,7 @@ Note these four things, they decide the whole app:
 
 ### Fast path: a committed regress bitstream (no Gurobi, seconds not minutes)
 
-`hw/vendor/ceimm_upm_strela/rtl/elastic-cgra/regress/4x4-HV/<app>/` holds a
+`hw/vendor/strela-v2/rtl/elastic-cgra/regress/4x4-HV/<app>/` holds a
 committed `bitstream.bin` + `io_map.json` for 21 HV kernels. That io_map carries
 the `location` fields, which is all `strela_bind` needs, and `CGRA.load_bin()`
 replays the bitstream into the same model `write_c_header()` emits from — so the
@@ -80,7 +80,7 @@ replayed header and io_map are byte-identical to what the mapper produced, and
 ```bash
 scripts/gr_heep_env.sh python3 scripts/regress2kernel.py <app> \
     -o sw/applications/strela_<name>/<app>_kernel.h
-cp hw/vendor/ceimm_upm_strela/rtl/elastic-cgra/regress/4x4-HV/<app>/io_map.json \
+cp hw/vendor/strela-v2/rtl/elastic-cgra/regress/4x4-HV/<app>/io_map.json \
    sw/applications/strela_<name>/<app>_io_map.json
 ```
 
@@ -91,7 +91,7 @@ only for a DFG with no committed bitstream, or after changing a DFG.
 ### Slow path: run the mapper (~10 min, run it in the background)
 
 ```bash
-scripts/gr_heep_env.sh make -C hw/vendor/ceimm_upm_strela/rtl/elastic-cgra \
+scripts/gr_heep_env.sh make -C hw/vendor/strela-v2/rtl/elastic-cgra \
     map-bitstream PROJECT=<app> CGRA_CONFIG=configs/4x4-HV.hjson
 ```
 
@@ -111,7 +111,7 @@ Then copy **both** artifacts into the app directory, always as a pair — they
 describe one solve, and a re-solve reshuffles the engine assignment:
 
 ```bash
-CG=hw/vendor/ceimm_upm_strela/rtl/elastic-cgra
+CG=hw/vendor/strela-v2/rtl/elastic-cgra
 cp $CG/build/bitstream/<app>_kernel.h   sw/applications/strela_<name>/
 cp $CG/build/bitstream/<app>_io_map.json sw/applications/strela_<name>/
 ```
@@ -146,7 +146,7 @@ hard-code which engine serves a port.
 
 ```python
 _STRELA_SW = os.path.abspath(os.path.join(
-    _HERE, "..", "..", "..", "hw", "vendor", "ceimm_upm_strela", "sw"))
+    _HERE, "..", "..", "..", "hw", "vendor", "strela-v2", "sw"))
 sys.path.insert(0, _STRELA_SW)
 from strela_desc import StreamProgram
 
@@ -276,14 +276,14 @@ Delegate this to the **`strela-sim` agent** to keep the build logs out of
 context. A pass looks like `SUCCESS!` plus `Program Finished with value 0`.
 
 - **Rebuild the Verilator model if it is older than
-  `hw/vendor/ceimm_upm_strela/rtl/elastic-cgra/rtl/cgra/cgra.sv`** — that file is
+  `hw/vendor/strela-v2/rtl/elastic-cgra/rtl/cgra/cgra.sv`** — that file is
   generated and gitignored, and a stale `Vtestharness` simulates a different
   fabric than the bitstream was built for. `make verilator-build` takes minutes;
   run it in the background.
 - Check the bitstream against the DFG too — this catches the class of bug where a
   committed kernel silently decodes to the wrong ALU op:
   ```bash
-  scripts/gr_heep_env.sh make -C hw/vendor/ceimm_upm_strela lint-kernel \
+  scripts/gr_heep_env.sh make -C hw/vendor/strela-v2 lint-kernel \
       KERNEL=../../../sw/applications/strela_<name>/<app>_kernel.h
   ```
 
@@ -309,8 +309,8 @@ That is the normal failure mode — the fabric just stops. Work down this list:
 6. Inspect the schedule visually:
    ```bash
    python3 sw/applications/strela_<name>/gen_descriptors.py \
-       -o /dev/null --streams hw/vendor/ceimm_upm_strela/build/streams/<name>.json
-   scripts/gr_heep_env.sh make -C hw/vendor/ceimm_upm_strela webgui \
+       -o /dev/null --streams hw/vendor/strela-v2/build/streams/<name>.json
+   scripts/gr_heep_env.sh make -C hw/vendor/strela-v2 webgui \
        STREAMS=build/streams/<name>.json
    ```
 7. `doc/STRELA_PROGRAMMING_GUIDE.md` §9 in the STRELA submodule is the golden-rule

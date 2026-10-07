@@ -31,7 +31,7 @@ unpinned solve, which puts lane a's A stream on ISE 1 -- the engine that also
 owns two of the u scratchpads. This app needs it on ISE 0, so the DFG carries
 `at=` pins (see mapper.py's parse_pin) and the header comes from a mapper run:
 
-    CG=hw/vendor/ceimm_upm_strela/rtl/elastic-cgra
+    CG=hw/vendor/strela-v2/rtl/elastic-cgra
     scripts/gr_heep_env.sh make -C $CG map-bitstream PROJECT=gemver_1_hv \\
         CGRA_CONFIG=configs/4x4-HV.hjson \\
         ARRAY_NAME=update_kernel CHEADER=build/bitstream/update_kernel.h
@@ -182,7 +182,7 @@ import sys
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _STRELA_SW = os.path.abspath(os.path.join(
-    _HERE, "..", "..", "..", "hw", "vendor", "ceimm_upm_strela", "sw"))
+    _HERE, "..", "..", "..", "hw", "vendor", "strela-v2", "sw"))
 sys.path.insert(0, _STRELA_SW)
 
 from strela_desc import StreamProgram  # noqa: E402

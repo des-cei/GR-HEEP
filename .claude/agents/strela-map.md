@@ -21,7 +21,7 @@ matters.
 ## Inputs
 
 - `PROJECT` — directory under
-  `hw/vendor/ceimm_upm_strela/rtl/elastic-cgra/mapper/applications/<PROJECT>/`. Required.
+  `hw/vendor/strela-v2/rtl/elastic-cgra/mapper/applications/<PROJECT>/`. Required.
 - `APP_DIR` — the GR-HEEP app, e.g. `sw/applications/strela_fft`. Optional; if
   absent, map only and report where the artifacts landed.
 
@@ -40,14 +40,14 @@ looks like a build failure.
 ## Procedure
 
 1. **Read the DFG first** and keep it for the report:
-   `hw/vendor/ceimm_upm_strela/rtl/elastic-cgra/mapper/applications/<PROJECT>/main.dot`.
+   `hw/vendor/strela-v2/rtl/elastic-cgra/mapper/applications/<PROJECT>/main.dot`.
    Record what each `input*`/`output*` carries (the header comment says),
    which inputs are `[border="west,east"]` (scratchpad-resident, replayed),
    and whether any node has a non-zero `delay_value` (accumulator: the app's
    `main.c` will have to patch it with `set_pe_delay_value`).
 
 2. **Check for a committed bitstream first.** If
-   `hw/vendor/ceimm_upm_strela/rtl/elastic-cgra/regress/4x4-HV/<PROJECT>/`
+   `hw/vendor/strela-v2/rtl/elastic-cgra/regress/4x4-HV/<PROJECT>/`
    exists, it already holds the `bitstream.bin` and `io_map.json` for this
    kernel, and `scripts/regress2kernel.py` replays them into the kernel header
    in seconds — verified byte-identical to a real solve. Say so and use it
@@ -62,7 +62,7 @@ looks like a build failure.
 
 3. **Map + bitstream** (only when there is no committed bitstream):
    ```bash
-   scripts/gr_heep_env.sh make -C hw/vendor/ceimm_upm_strela/rtl/elastic-cgra \
+   scripts/gr_heep_env.sh make -C hw/vendor/strela-v2/rtl/elastic-cgra \
        map-bitstream PROJECT=<PROJECT> CGRA_CONFIG=configs/4x4-HV.hjson \
        > /tmp/strela-map-<PROJECT>.log 2>&1
    ```
@@ -80,7 +80,7 @@ looks like a build failure.
    a pair — they describe one solve, and a re-solve reshuffles the engine
    assignment, so a mismatched pair produces a table that deadlocks:
    ```bash
-   CG=hw/vendor/ceimm_upm_strela/rtl/elastic-cgra
+   CG=hw/vendor/strela-v2/rtl/elastic-cgra
    cp $CG/build/bitstream/<PROJECT>_kernel.h    <APP_DIR>/
    cp $CG/build/bitstream/<PROJECT>_io_map.json <APP_DIR>/
    ```
@@ -89,13 +89,13 @@ looks like a build failure.
    differently than the DFG asks for — a bug that otherwise shows up only as a
    silent deadlock):
    ```bash
-   scripts/gr_heep_env.sh make -C hw/vendor/ceimm_upm_strela lint-kernel \
+   scripts/gr_heep_env.sh make -C hw/vendor/strela-v2 lint-kernel \
        KERNEL=../../../<APP_DIR>/<PROJECT>_kernel.h
    ```
 
 5. **Resolve the bindings** so the caller can write descriptors without opening
    the json. Each io_map `location` maps to an engine as below
-   (`hw/vendor/ceimm_upm_strela/sw/strela_bind.py` is authoritative), with
+   (`hw/vendor/strela-v2/sw/strela_bind.py` is authoritative), with
    `row = n // 4` and `col = n % 4`:
 
    | io_map location | kind | resolves to |

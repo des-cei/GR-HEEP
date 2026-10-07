@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 GR-HEEP is a downstream SoC built on top of [X-HEEP](https://github.com/x-heep/x-heep) (vendored as a git
 submodule/vendor tree at `hw/vendor/x-heep`), extended with the STRELA CGRA accelerator
-(vendored at `hw/vendor/ceimm_upm_strela`, a private GitLab submodule). Almost none of the
+(vendored at `hw/vendor/strela-v2`, a private GitLab submodule). Almost none of the
 vendored code is authored in this repo — GR-HEEP only adds the glue RTL, pad configuration,
 software applications, and SoC-level integration on top.
 
@@ -118,7 +118,7 @@ To iterate on a single app instead of the whole suite, use `make app PROJECT=<na
 
 ```
 hw/vendor/x-heep/      X-HEEP core (core-v-mini-mcu, peripherals, sw runtime/drivers, mcu-gen tool)
-hw/vendor/ceimm_upm_strela/   STRELA CGRA accelerator IP (private submodule)
+hw/vendor/strela-v2/   STRELA CGRA accelerator IP (private submodule)
 hw/gr-heep/            GR-HEEP-specific RTL, generated from .tpl templates by `make mcu-gen`
 hw/fpga_ext/           Xilinx-specific top-level wrapper + Vivado TCL for FPGA builds
 config/                mcu-gen inputs: SoC memory map/peripheral config (Python + hjson) and pad ring config
@@ -641,7 +641,7 @@ MODULE_NAME=<name>` after bumping a `.vendor.hjson` rev; CI's `check-vendor` job
 vendored tree doesn't match what re-vendoring would produce, so patches/rev bumps must be
 committed together with the resulting vendored file changes.
 
-STRELA (`hw/vendor/ceimm_upm_strela`) is a plain git submodule (see `.gitmodules`), not managed
+STRELA (`hw/vendor/strela-v2`) is a plain git submodule (see `.gitmodules`), not managed
 through the vendor tool.
 
 ### CI (`.github/workflows/ci.yml`)

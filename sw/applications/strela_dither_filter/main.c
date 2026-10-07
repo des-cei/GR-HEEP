@@ -55,7 +55,7 @@ int main(void) {
     // circulating in select0 (initial_value=0, initial_valid=1), not an
     // accumulator PE, so every delay_value in the DFG is 0 -- confirmed by
     // decoding the kernel array from the solve that produced it:
-    //   make -C hw/vendor/ceimm_upm_strela/rtl/elastic-cgra map-bitstream \
+    //   make -C hw/vendor/strela-v2/rtl/elastic-cgra map-bitstream \
     //        PROJECT=dither_filter CGRA_CONFIG=configs/4x4-HV.hjson
     // which placed sub0/select0/add0/and0 on PE 0..3, cmp0 on PE 5 and mul0 on
     // PE 13, all with delay_value=0. The threshold (cmp0's constant, -127), the

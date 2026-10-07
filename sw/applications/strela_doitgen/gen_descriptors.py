@@ -23,7 +23,7 @@ kernel header without re-running the mapper:
 
     scripts/gr_heep_env.sh python3 scripts/regress2kernel.py doitgen_hv \\
         -o sw/applications/strela_doitgen/doitgen_hv_kernel.h
-    cp hw/vendor/ceimm_upm_strela/rtl/elastic-cgra/regress/4x4-HV/doitgen_hv/io_map.json \\
+    cp hw/vendor/strela-v2/rtl/elastic-cgra/regress/4x4-HV/doitgen_hv/io_map.json \\
         sw/applications/strela_doitgen/doitgen_hv_io_map.json
     make gen-app-data PROJECT=strela_doitgen  # or: python3 gen_descriptors.py
 
@@ -48,7 +48,7 @@ import sys
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _STRELA_SW = os.path.abspath(os.path.join(
-    _HERE, "..", "..", "..", "hw", "vendor", "ceimm_upm_strela", "sw"))
+    _HERE, "..", "..", "..", "hw", "vendor", "strela-v2", "sw"))
 sys.path.insert(0, _STRELA_SW)
 
 from strela_desc import StreamProgram  # noqa: E402

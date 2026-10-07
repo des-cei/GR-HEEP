@@ -9,7 +9,7 @@ vertical OSE buses of routers 2/1/3 -- so the binding layer picks a different
 opcode per port. The bitstream is the one committed in elastic-cgra's
 regression, replayed into a kernel header without re-running the mapper:
 
-    CG=hw/vendor/ceimm_upm_strela/rtl/elastic-cgra
+    CG=hw/vendor/strela-v2/rtl/elastic-cgra
     python3 scripts/regress2kernel.py find2min \\
         -o sw/applications/strela_find2min/find2min_kernel.h
     cp $CG/regress/4x4-HV/find2min/io_map.json \\
@@ -39,7 +39,7 @@ import sys
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _STRELA_SW = os.path.abspath(os.path.join(
-    _HERE, "..", "..", "..", "hw", "vendor", "ceimm_upm_strela", "sw"))
+    _HERE, "..", "..", "..", "hw", "vendor", "strela-v2", "sw"))
 sys.path.insert(0, _STRELA_SW)
 
 from strela_desc import StreamProgram  # noqa: E402

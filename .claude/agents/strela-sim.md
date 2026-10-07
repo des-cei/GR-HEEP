@@ -33,7 +33,7 @@ looks like a build failure but is really an unset environment.
 ## Procedure
 
 1. **Check the model is fresh.** The fabric RTL
-   `hw/vendor/ceimm_upm_strela/rtl/elastic-cgra/rtl/cgra/cgra.sv` is generated and
+   `hw/vendor/strela-v2/rtl/elastic-cgra/rtl/cgra/cgra.sv` is generated and
    gitignored. If it is **newer** than
    `build/x-heep_systems_gr-heep_0/sim-verilator/Vtestharness`, or that binary is
    missing, or `REBUILD` was requested, rebuild — a stale model simulates a
@@ -44,7 +44,7 @@ looks like a build failure but is really an unset environment.
        > /tmp/strela-sim-build.log 2>&1; echo "EXIT=$?"
    ```
    This takes several minutes. If `cgra.sv` is missing entirely, run
-   `scripts/gr_heep_env.sh make -C hw/vendor/ceimm_upm_strela cgra-gen` first
+   `scripts/gr_heep_env.sh make -C hw/vendor/strela-v2 cgra-gen` first
    (default `CGRA_CONFIG=configs/4x4-HV.hjson`, the only one STRELA accepts).
    On failure, grep the log for the first `%Error`/`Error:`/`error:` and report
    that line with its file:line. Do not paste the log.

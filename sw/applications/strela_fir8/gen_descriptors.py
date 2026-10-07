@@ -6,7 +6,7 @@ that pairs with the bitstream, resolved by STRELA's shared binding layer. The
 bitstream is the one committed in elastic-cgra's regression, replayed into a
 kernel header without re-running the mapper:
 
-    CG=hw/vendor/ceimm_upm_strela/rtl/elastic-cgra
+    CG=hw/vendor/strela-v2/rtl/elastic-cgra
     python3 scripts/regress2kernel.py fir8 -o sw/applications/strela_fir8/fir8_kernel.h
     cp $CG/regress/4x4-HV/fir8/io_map.json sw/applications/strela_fir8/fir8_io_map.json
     make gen-app-data PROJECT=strela_fir8      # or: python3 gen_descriptors.py
@@ -34,7 +34,7 @@ import sys
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _STRELA_SW = os.path.abspath(os.path.join(
-    _HERE, "..", "..", "..", "hw", "vendor", "ceimm_upm_strela", "sw"))
+    _HERE, "..", "..", "..", "hw", "vendor", "strela-v2", "sw"))
 sys.path.insert(0, _STRELA_SW)
 
 from strela_desc import StreamProgram  # noqa: E402
