@@ -181,8 +181,8 @@ module gr_heep_peripherals
     // Instantiate here the external peripherals
     % for a_slave in gr_heep["peripherals"]:
         % if (a_slave['name'] == "Strela"):
-          // STRELA
-          strela_wrapper strela_i (
+          // STRELA v2
+          strela_v2_wrapper strela_v2_i (
               .clk_i(clk_i),
               .rst_ni(rst_ni),
               .reg_req_i(gr_heep_peripheral_req[gr_heep_pkg::StrelaPeriphIdx]),
