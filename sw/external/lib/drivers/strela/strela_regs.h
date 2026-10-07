@@ -1,1 +1,1 @@
-../../../../../hw/vendor/ceimm_upm_strela/sw/strela_regs.h
+../../../../../hw/vendor/strela-v2/sw/strela_regs.h
