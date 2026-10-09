@@ -15,6 +15,7 @@ filesets:
     - openhwgroup.org:systems:core-v-mini-mcu
     - ceimmupm:accelerators:strela-v1
     - ceimmupm:accelerators:strela-v2
+    - ceimmupm:accelerators:ntt-kyber
     files:
     - hw/gr-heep/gr_heep_pkg.sv
     - hw/gr-heep/gr_heep_xbar.sv

@@ -206,6 +206,15 @@ module gr_heep_peripherals
               .strela_v2_mem_clk_en_i('1),
               .strela_v2_mem_set_retentive_ni('1)
           );
+        % elif (a_slave['name'] == "NttKyber"):
+          // NTT Kyber
+          ntt_kyber ntt_kyber_i (
+              .clk_i(clk_i),
+              .rst_ni(rst_ni),
+              .reg_req_i(gr_heep_peripheral_req[gr_heep_pkg::NttKyberPeriphIdx]),
+              .reg_rsp_o(gr_heep_peripheral_rsp[gr_heep_pkg::NttKyberPeriphIdx]),
+              .intr_o(gr_heep_peripheral_vec_int[${a_slave['idx']}])
+          );
         % endif
     % endfor
   % endif

@@ -134,6 +134,8 @@ mcu-gen: | $(BUILD_DIR)/
 		EXTERNAL_MCU_GEN_TEMPLATES="$(EXTERNAL_MCU_GEN_TEMPLATES)"
 	$(MAKE) verible
 	@echo "✅ DONE! X-HEEP MCU and GR-HEEP generated successfully"
+	$(MAKE) -C hw/vendor/strela-v1 cgra-gen
+	$(MAKE) -C hw/vendor/strela-v2 cgra-gen
 
 ## @section Verilator
 
