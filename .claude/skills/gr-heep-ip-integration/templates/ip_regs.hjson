@@ -1,0 +1,69 @@
+// Copyright lowRISC contributors.
+// Licensed under the Apache License, Version 2.0, see LICENSE for details.
+// SPDX-License-Identifier: Apache-2.0
+// {{AUTHOR}}
+//
+// Starting point: CTRL.START / STATUS.DONE,BUSY / INTR_EN + an optional window.
+// Delete what the IP does not need, add its configuration registers after INTR_EN.
+// Patterns: .claude/skills/gr-heep-ip-integration/reference/interfaces.md section 1.3.
+
+{
+  name: "{{ip}}",
+  clock_primary: "clk_i",
+  bus_interfaces: [
+    { protocol: "reg_iface", direction: "device" }
+  ],
+  regwidth: "32",
+  registers: [
+    { name:     "CTRL",
+      desc:     "Control register",
+      swaccess: "wo",
+      hwaccess: "hro",
+      hwqe:     "true",
+      fields: [
+        { bits: "0", name: "START", resval: "0",
+          desc: "Write 1 to start. Clears STATUS.DONE. Ignored while STATUS.BUSY is set."
+        }
+      ]
+    }
+
+    { name:     "STATUS",
+      desc:     "Status register",
+      fields: [
+        { bits: "0", name: "DONE", resval: "0",
+          swaccess: "rw1c", hwaccess: "hrw",
+          desc: "Set when a run finishes; drives the interrupt when INTR_EN is set. Write 1 to clear (START clears it too)."
+        }
+        { bits: "1", name: "BUSY", resval: "0",
+          swaccess: "ro", hwaccess: "hwo",
+          desc: "A run is in progress."
+        }
+      ]
+    }
+
+    { name:     "INTR_EN",
+      desc:     "Interrupt enable register",
+      swaccess: "rw",
+      hwaccess: "hro",
+      fields: [
+        { bits: "0", name: "EN", resval: "0", desc: "Raise intr_o while STATUS.DONE is set" }
+      ]
+    }
+
+    // TODO: configuration registers, e.g.
+    // { name: "CFG", desc: "...", swaccess: "rw", hwaccess: "hro",
+    //   fields: [ { bits: "15:0", name: "LEN", resval: "0", desc: "..." } ] }
+
+    // TODO (optional): a window onto a memory of the IP. Offset = multiple of its size.
+    // { skipto: "0x400" }
+    // { window: {
+    //     name: "MEM",
+    //     items: "256",
+    //     validbits: "32",
+    //     byte-write: "true",
+    //     swaccess: "rw",
+    //     desc: "..."
+    //   }
+    // }
+  ]
+}

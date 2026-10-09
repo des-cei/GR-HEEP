@@ -1,0 +1,12 @@
+// Copyright {{YEAR}} CEIMM-UPM
+// Solderpad Hardware License, Version 2.1, see LICENSE.md for details.
+// SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
+// {{AUTHOR}}
+
+`verilator_config
+
+// One waiver per intentional warning, each with the reason it is intentional.
+// Never waive a whole rule for a whole file without a reason.
+
+// regtool emits reg_top and reg_top_intf in the same file.
+lint_off -rule DECLFILENAME -file "*/{{ip}}_reg_top.sv"

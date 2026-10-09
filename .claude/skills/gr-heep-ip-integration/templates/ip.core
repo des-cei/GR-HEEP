@@ -1,0 +1,37 @@
+CAPI=2:
+
+# Copyright {{YEAR}} CEIMM-UPM
+# Solderpad Hardware License, Version 2.1, see LICENSE.md for details.
+# SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
+# {{AUTHOR}}
+
+name: "ceimmupm:accelerators:{{ip-dash}}"
+description: "TODO one-line description of {{ip}}"
+
+filesets:
+  files_rtl:
+    depend:
+    - x-heep::packages                    # xheep_reg_pkg / xheep_obi_pkg / xheep_fifo_pkg
+    - pulp-platform.org::common_cells
+    - pulp-platform.org::register_interface
+    - lowrisc:prim:subreg                 # instantiated by the regtool reg_top
+    # - pulp-platform.org::reg_to_axi     # only with reg_to_axi / axi_lite_to_reg bridges
+    # - pulp-platform.org::axi            # only with axi_to_mem / AXI converters
+    files:
+    # Dependency order: packages first, the wrapper last.
+    - rtl/{{ip}}_reg_pkg.sv
+    - rtl/{{ip}}_reg_top.sv
+    # TODO: the IP's own packages and modules
+    - rtl/{{ip}}.sv
+    file_type: systemVerilogSource
+
+  files_verilator_waiver:
+    files:
+    - lint/{{ip}}.vlt
+    file_type: vlt
+
+targets:
+  default:
+    filesets:
+    - files_rtl
+    - tool_verilator? (files_verilator_waiver)
