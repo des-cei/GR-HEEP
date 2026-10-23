@@ -20,6 +20,7 @@
 // but never named strela.
 
 #include <stdint.h>
+#include "gr_heep.h"
 
 /*************** Fabric (both generations) ***************/
 
@@ -262,6 +263,15 @@ static inline void set_pe_delay_value(uint32_t *conf_addr, uint8_t pe_number, ui
 // own, so CONF_ADDR takes the whole array.
 #define STRELA_V1_CONFIG_SIZE (NPE * PE_WORDS)
 #define STRELA_V1_CONFIG_BYTES (STRELA_V1_CONFIG_SIZE * 4)
+
+// A SoC with several STRELA v1 names them strela_v1_0, strela_v1_1, ... in
+// config/mcu-gen-config.py, so gr_heep.h has STRELA_V1_<n>_PERIPH_* instead of
+// STRELA_V1_PERIPH_*. An app written for a single one then drives the first.
+#if !defined(STRELA_V1_PERIPH_START_ADDRESS) && defined(STRELA_V1_0_PERIPH_START_ADDRESS)
+#define STRELA_V1_PERIPH_START_ADDRESS STRELA_V1_0_PERIPH_START_ADDRESS
+#define STRELA_V1_PERIPH_SIZE STRELA_V1_0_PERIPH_SIZE
+#define STRELA_V1_PERIPH_END_ADDRESS STRELA_V1_0_PERIPH_END_ADDRESS
+#endif
 
 // ISE i streams into the north border of column i, i.e. fabric input channel
 // i; output stream engine (OSE) i drains the south border of column i, fabric

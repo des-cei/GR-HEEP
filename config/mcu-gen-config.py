@@ -225,9 +225,10 @@ def config():
 
 def gr_heep_config():
 
-    # STRELA v1 owns masters 0-7 (4 ISEs + 4 OSEs), STRELA v2
-    # masters 8-15 (4 ISEs + 4 OSEs); see gr_heep_peripherals.sv.tpl.
-    ext_xbar_nmasters = 0  # 16
+    # STRELA v1 #0 owns masters 0-7 and STRELA v1 #1 masters 8-15 (4 ISEs +
+    # 4 OSEs each); STRELA v2 would take 8-15 in a single-v1 SoC. See
+    # gr_heep_peripherals.sv.tpl.
+    ext_xbar_nmasters = 16  # 16
 
     # External slaves memory map
     ext_xbar_slaves = {
@@ -243,10 +244,14 @@ def gr_heep_config():
 
     # External peripherals
     ext_periph = {
-        # "strela_v1": {
-        #     "offset": 0x00000000,
-        #     "length": 0x00001000,
-        # },
+        "strela_v1_0": {
+            "offset": 0x00000000,
+            "length": 0x00001000,
+        },
+        "strela_v1_1": {
+            "offset": 0x00001000,
+            "length": 0x00001000,
+        },
         # "strela_v2": {
         #     "offset": 0x00001000,
         #     "length": 0x00001000,
@@ -261,7 +266,7 @@ def gr_heep_config():
 
     # One per interrupting peripheral, indexed by its peripheral index above
     # (with STRELA v1/v2 enabled: 0 and 1 are the STRELAs, 2 the NTT).
-    external_interrupts = 0  # 3
+    external_interrupts = 2  # 3
 
     # Channels allowed to connect hw_fifo streaming accelerators
     hw_fifo_channels = []

@@ -180,16 +180,28 @@ module gr_heep_peripherals
 
     // Instantiate here the external peripherals
     % for a_slave in gr_heep["peripherals"]:
-        % if (a_slave['name'] == "StrelaV1"):
-          // STRELA v1
-          strela_v1_wrapper strela_v1_i (
+        % if (a_slave['name'] == "StrelaV10"):
+          // STRELA v1 #0
+          strela_v1_wrapper strela_v1_0_i (
               .clk_i(clk_i),
               .rst_ni(rst_ni),
               .strela_v1_clk_en_i(1'b1),
-              .reg_req_i(gr_heep_peripheral_req[gr_heep_pkg::StrelaV1PeriphIdx]),
-              .reg_rsp_o(gr_heep_peripheral_rsp[gr_heep_pkg::StrelaV1PeriphIdx]),
+              .reg_req_i(gr_heep_peripheral_req[gr_heep_pkg::StrelaV10PeriphIdx]),
+              .reg_rsp_o(gr_heep_peripheral_rsp[gr_heep_pkg::StrelaV10PeriphIdx]),
               .masters_req_o(gr_heep_master_req_o[strela_v1_pkg::NUM_SE-1:0]),
               .masters_resp_i(gr_heep_master_resp_i[strela_v1_pkg::NUM_SE-1:0]),
+              .intr_o(gr_heep_peripheral_vec_int[${a_slave['idx']}])
+          );
+        % elif (a_slave['name'] == "StrelaV11"):
+          // STRELA v1 #1
+          strela_v1_wrapper strela_v1_1_i (
+              .clk_i(clk_i),
+              .rst_ni(rst_ni),
+              .strela_v1_clk_en_i(1'b1),
+              .reg_req_i(gr_heep_peripheral_req[gr_heep_pkg::StrelaV11PeriphIdx]),
+              .reg_rsp_o(gr_heep_peripheral_rsp[gr_heep_pkg::StrelaV11PeriphIdx]),
+              .masters_req_o(gr_heep_master_req_o[2*strela_v1_pkg::NUM_SE-1:strela_v1_pkg::NUM_SE]),
+              .masters_resp_i(gr_heep_master_resp_i[2*strela_v1_pkg::NUM_SE-1:strela_v1_pkg::NUM_SE]),
               .intr_o(gr_heep_peripheral_vec_int[${a_slave['idx']}])
           );
         % elif (a_slave['name'] == "StrelaV2"):
