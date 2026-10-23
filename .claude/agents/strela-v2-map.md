@@ -31,8 +31,8 @@ Never substitute another config, even if the caller names one.
 
 ## Environment
 
-Run every command through `scripts/gr_heep_env.sh` from the repo root
-(`/home/dani/work/GR-HEEP`). Do **not** hand-write `source /tools/env_x-heep.sh
+Run every command through `scripts/gr_heep_env.sh` from the repo root (the
+directory holding `.claude/`; the checkout may live under any name). Do **not** hand-write `source /tools/env_x-heep.sh
 && ...`: that script ends in `conda activate`, fails in a non-interactive shell,
 and the `&&` then skips the real command, leaving an empty log and exit 1 that
 looks like a build failure.

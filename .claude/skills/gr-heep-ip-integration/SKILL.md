@@ -370,3 +370,13 @@ timeout.
   regeneration shows spurious diffs.
 - **Generic module names collide**: FuseSoC compiles every core into one namespace.
   Two IPs with a `fsm` or `top` module break the build in confusing ways.
+- **Vendored copies of shared libraries collide too.** `--cores-root .` scans the whole
+  tree, nested submodules included, so an IP that carries its own `common_cells`,
+  `obione`, `obi_pkg` and the like adds a second core with the same VLNV, or a second
+  definition of the same module/package, which FuseSoC resolves silently and
+  order-dependently. Run `git -C hw/vendor/<ip> submodule status` and grep its `.core`
+  for library files during the survey. Hide duplicates with an empty `FUSESOC_IGNORE` in
+  the directory that holds them (as `hw/vendor/strela-v1/rtl/FUSESOC_IGNORE` does for
+  v1's elastic-cgra and obione) and depend on the X-HEEP / STRELA v2 copy instead.
+  `hw/vendor/vermu` is a pending case: its nested `common_cells` has X-HEEP's exact VLNV,
+  and its core compiles its own `obi_pkg` and lists an `obione.sv` that is not checked out.

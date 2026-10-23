@@ -7,9 +7,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 GR-HEEP is a downstream SoC built on top of [X-HEEP](https://github.com/x-heep/x-heep) (vendored as a git
 submodule/vendor tree at `hw/vendor/x-heep`), extended with two generations of the STRELA CGRA accelerator, side by side:
 STRELA v2 (`hw/vendor/strela-v2`, a git submodule of `des-cei/strela-v2`) and STRELA v1
-(`hw/vendor/strela-v1`, a git submodule of `des-cei/strela-v1`). Almost none of the
-vendored code is authored in this repo — GR-HEEP only adds the glue RTL, pad configuration,
-software applications, and SoC-level integration on top.
+(`hw/vendor/strela-v1`, a git submodule of `des-cei/strela-v1`), plus other department IPs
+as further submodules under `hw/vendor` (e.g. the VERMU vector unit, `hw/vendor/vermu`, checked
+out but not yet wired in). Almost
+none of the vendored code is authored in this repo — GR-HEEP only adds the glue RTL, pad
+configuration, software applications, and SoC-level integration on top.
 
 Because of this, most X-HEEP concepts (mcu-gen, peripherals, linker flow, `sw/vendor` drivers)
 apply unchanged here; only what GR-HEEP adds/overrides is documented below.
@@ -28,9 +30,10 @@ activates the `core-v-mini-mcu` conda env. Without this, `make` targets that she
 
 ## Submodules
 
-On a fresh clone, submodules must be initialized. STRELA and its own submodules (`rtl/elastic-cgra`,
-`rtl/obione`) are cloned over SSH from `github.com:des-cei`, so this needs GitHub SSH access to
-that organisation:
+On a fresh clone, submodules must be initialized. Both STRELAs and their own submodules
+(`rtl/elastic-cgra`, `rtl/obione`) and the other department IPs are cloned over SSH from
+`github.com:des-cei`, so this needs GitHub SSH access to that organisation (vermu's nested
+`common_cells` comes from GitHub over HTTPS):
 
 ```bash
 git submodule update --init --recursive
@@ -46,7 +49,9 @@ even though they aren't defined here.
 
 ```bash
 # Generate the X-HEEP MCU + GR-HEEP RTL/headers from the mcu-gen config (run after any
-# config/*.hjson, config/*.py, or hw/gr-heep/*.tpl change; also formats/lints the generated RTL)
+# config/*.hjson, config/*.py, or hw/gr-heep/*.tpl change; also formats/lints the generated RTL,
+# then runs `cgra-gen` in both STRELA submodules, enabled in the config or not: v2's gitignored
+# cgra.sv is generated, v1's committed strela_v1_cgra.sv re-rendered byte-identical)
 make mcu-gen
 
 # Build a software application (forwarded to X-HEEP's Makefile)
@@ -122,10 +127,12 @@ To iterate on a single app instead of the whole suite, use `make app PROJECT=<na
 hw/vendor/x-heep/      X-HEEP core (core-v-mini-mcu, peripherals, sw runtime/drivers, mcu-gen tool)
 hw/vendor/strela-v2/   STRELA v2 CGRA accelerator IP (submodule; carries elastic-cgra and obione)
 hw/vendor/strela-v1/   STRELA v1 CGRA accelerator IP (submodule; carries its own elastic-cgra, unused by FuseSoC)
+hw/vendor/vermu/       VERMU Zve32x vector unit (submodule; not yet in gr-heep.core or the config)
 hw/gr-heep/            GR-HEEP-specific RTL, generated from .tpl templates by `make mcu-gen`
 hw/fpga_ext/           Xilinx-specific top-level wrapper + Vivado TCL for FPGA builds
 config/                mcu-gen inputs: SoC memory map/peripheral config (Python + hjson) and pad ring config
-sw/applications/       GR-HEEP-specific firmware apps (CPU benchmarks + STRELA-accelerated apps)
+sw/applications/       GR-HEEP-specific firmware apps (CPU benchmarks, STRELA-accelerated apps, IP test apps)
+sw/external/lib/drivers/  GR-HEEP driver headers (strela/, one folder per IP), on the app include path
 tb/                    Testbench (Verilator/Questasim harness, JTAG, UART DPI)
 test/                  Regression runner (delegates to X-HEEP's test_apps machinery)
 ```
@@ -149,10 +156,45 @@ counterpart) and can be edited directly.
 ### FuseSoC integration
 
 `gr-heep.core` is the FuseSoC core file (`x-heep:systems:gr-heep`) that ties everything together:
-RTL filesets depend on X-HEEP's `core-v-mini-mcu` and pad control cores plus STRELA's `ceimmupm:accelerators:strela-v2`
-and `ceimmupm:accelerators:strela-v1` cores; separate filesets exist for Verilator waivers/harness, Questasim, and Xilinx FPGA
+RTL filesets depend on X-HEEP's `core-v-mini-mcu` and pad control cores plus the
+`ceimmupm:accelerators:strela-v2` and `ceimmupm:accelerators:strela-v1` cores and those of the
+other integrated IPs (always compiled; whether each is *instantiated* is up to
+the config, below); separate filesets exist for Verilator waivers/harness, Questasim, and Xilinx FPGA
 (`rtl-fpga`, using `hw/fpga_ext/xilinx_gr_heep_wrapper.sv`). All `make verilator-*`/`questasim-*`/
 `vivado-*` targets ultimately invoke `fusesoc --cores-root . run ... x-heep:systems:gr-heep`.
+
+`--cores-root .` makes FuseSoC scan the **whole tree**, submodules and `.claude/` included, and
+compile everything into one module namespace. Two cores with the same VLNV, or two copies of the
+same module, are therefore a hazard whenever an IP vendors its own copy of a shared library —
+which is why `hw/vendor/strela-v1/rtl/FUSESOC_IGNORE` hides v1's elastic-cgra and obione, and
+`.claude/skills/gr-heep-ip-integration/templates/FUSESOC_IGNORE` hides the template `ip.core`.
+`hw/vendor/vermu` is the next case: its nested `rtl/vendor/pulp_platform/common_cells` has the
+same VLNV (`pulp-platform.org::common_cells:1.38.0`) as X-HEEP's (FuseSoC currently resolves
+X-HEEP's), its core (`ceiupm::vpu_upm`) compiles its own `package obi_pkg`, and it also lists an
+`rtl/vendor/obione/rtl/obione.sv` that is not in the checkout (and whose module would collide
+with the STRELAs' `obione`), so it cannot simply be depended on as it stands.
+
+### Which external IPs are enabled
+
+The IPs are selected in `gr_heep_config()` in `config/mcu-gen-config.py`, and the committed file
+does not necessarily enable all of them: entries in `ext_periph` get commented out to integrate
+something else or to shorten simulations, with `ext_xbar_nmasters` and `external_interrupts`
+lowered to match (the values with everything on are kept in a trailing comment, e.g.
+`0  # 16`). Read it before assuming an IP is there. The two STRELAs take the first two slots:
+
+| `ext_periph` entry | Offset | Index / ext. interrupt | External masters |
+|---|---|---|---|
+| `strela_v1` | `+0x0000` | 0 | 0–7 |
+| `strela_v2` | `+0x1000` | 1 | 8–15 (`strela_v1_pkg::NUM_SE+:`, hard-coded in the template) |
+
+so `ext_xbar_nmasters = 16` with both on; other IPs follow at the next 4 KiB slot and index,
+and `external_interrupts` must cover the highest index that drives an IRQ. The peripheral index, and with it the
+interrupt bit, is the entry's position in the dict, so disabling one renumbers those after it.
+An app for a disabled IP **does not compile** (its `<NAME>_PERIPH_START_ADDRESS` is missing from
+the generated `gr_heep.h`), and that is also what `make test` reports for it. After changing the
+selection, re-run `make mcu-gen` and rebuild the simulation model. External interrupts are all
+OR'd onto fast interrupt 15, and the FIC does **not latch** a pending bit unless bit 15 of
+`FAST_INTR_ENABLE` is set — polling `FAST_INTR_PENDING` without it sees nothing.
 
 ### STRELA accelerator
 
@@ -166,8 +208,9 @@ files.
 
 ### STRELA v1 next to STRELA v2
 
-Both generations are instantiated in the same SoC (`gr_heep_peripherals.sv.tpl`), each as its own
-external peripheral, interrupt and set of bus masters (`config/mcu-gen-config.py`):
+Both generations can be instantiated in the same SoC (`gr_heep_peripherals.sv.tpl`), each as its own
+external peripheral, interrupt and set of bus masters (`config/mcu-gen-config.py`; the numbers
+below assume both are enabled, see "Which external IPs are enabled"):
 
 | | STRELA v2 | STRELA v1 |
 |---|---|---|
@@ -251,7 +294,9 @@ cycles here. Width pays off in cycles only where a kernel is memory-paced.
 
 ### Software applications (`sw/applications/`)
 
-Two families:
+Besides the IP test apps, `gr_heep_hello_world` and the `strela_v1_*` apps (`strela_v1_fir`,
+`strela_v1_gemm`, `strela_v1_relu8`, `strela_v1_stream_test`, described in the STRELA v1 section),
+two families:
 - `cpu_*`: plain CPU-only benchmarks run on the core-v-mini-mcu CPU, used as a performance
   baseline against the STRELA-accelerated versions. Data is generated by `gen_data.py` into
   `dataset.h`, and every one of them self-checks against a golden and returns non-zero on
@@ -734,11 +779,13 @@ MODULE_NAME=<name>` after bumping a `.vendor.hjson` rev; CI's `check-vendor` job
 vendored tree doesn't match what re-vendoring would produce, so patches/rev bumps must be
 committed together with the resulting vendored file changes.
 
-Both STRELAs (`hw/vendor/strela-v2`, `hw/vendor/strela-v1`) are plain git submodules (see
-`.gitmodules`), not managed through the vendor tool. Each imports X-HEEP's `xheep_obi_pkg` / `xheep_reg_pkg` (and their
-`xheep_obi_req_t`, `xheep_obi_rsp_t`, `xheep_reg_req_t`, `xheep_reg_rsp_t` types) directly, as does its
-nested `obione`; the old `obi_pkg` / `reg_pkg` names no longer exist in the vendored X-HEEP, so do not
-reintroduce them as shims here. A change to STRELA is committed innermost first (obione, then
+The department IPs (`hw/vendor/strela-v2`, `hw/vendor/strela-v1`, `hw/vendor/vermu`, …) are
+plain git submodules (see `.gitmodules`), not managed through the vendor tool; a new one is added
+with the `gr-heep-ip-integration` skill. Both STRELAs import X-HEEP's `xheep_obi_pkg` / `xheep_reg_pkg` (and their
+`xheep_obi_req_t`, `xheep_obi_rsp_t`, `xheep_reg_req_t`, `xheep_reg_rsp_t` types) directly, as does the
+STRELAs' nested `obione`; the old `obi_pkg` / `reg_pkg` names no longer exist in the vendored X-HEEP, so do not
+reintroduce them as shims here (vermu still ships its own `obi_pkg` — adapt it in the IP, as
+the skill's Phase 1 describes, rather than adding a shim). A change to STRELA is committed innermost first (obione, then
 strela-v2 or strela-v1, then the pointer bump in GR-HEEP) and pushed in the same order.
 
 ### CI (`.github/workflows/ci.yml`)
@@ -747,3 +794,5 @@ Jobs: `determine-image-tag` (resolves the vendored X-HEEP toolchain Docker image
 vendored rev), `lint` (`make mcu-gen` + diff check against committed generated files),
 `check-vendor` (re-vendor + diff check), `black-formatter` (checks `config/` and `test/`), and
 `simulate-apps` (`make mcu-gen` + `test/gr_heep_test_apps.py`, i.e. the same as `make test`).
+`simulate-apps` builds every app in `sw/applications`, so the apps of an IP that the committed
+config leaves disabled fail to compile there unless they are added to `BLACKLIST`.

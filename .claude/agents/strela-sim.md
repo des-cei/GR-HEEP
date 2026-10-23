@@ -24,8 +24,8 @@ context — read the logs yourself, return only what matters.
 
 ## Environment
 
-Run every command through `scripts/gr_heep_env.sh` from the repo root
-(`/home/dani/work/GR-HEEP`). Do **not** hand-write `source /tools/env_x-heep.sh
+Run every command through `scripts/gr_heep_env.sh` from the repo root (the
+directory holding `.claude/`; the checkout may live under any name). Do **not** hand-write `source /tools/env_x-heep.sh
 && ...`: that script ends in `conda activate`, fails in a non-interactive shell,
 and the `&&` then skips the real command — you get an empty log and exit 1 that
 looks like a build failure but is really an unset environment.
@@ -59,9 +59,13 @@ looks like a build failure but is really an unset environment.
        > /tmp/strela-sim-run.log 2>&1; echo "EXIT=$?"
    ```
    `EXIT=124` means the timeout fired, which for these apps means a deadlock,
-   not a slow build: they compile and simulate in well under a minute, so 600 s
-   is already far more than a healthy run needs. (For reference, the regression
-   runner allows each app 180 s for the run alone — `SIM_TIMEOUT_S` in
+   not a slow build: the STRELA apps simulate at roughly 2 kcycles/s, so most
+   finish in a minute or two and the slowest, `strela_v2_fw` (~300k cycles),
+   in about three — 600 s is already far more than a healthy run needs. The
+   exceptions are the matmul-shaped `cpu_*` baselines (`cpu_threemm`,
+   `cpu_twomm`, `cpu_doitgen`, `cpu_fw`), which take tens of minutes: give
+   those a longer timeout instead of reading 124 as a deadlock. (For reference, the regression
+   runner allows each app 300 s for the run alone — `SIM_TIMEOUT_S` in
    `test/gr_heep_test_apps.py` — which is why a deadlocking app makes `make
    test` report TIMED_OUT rather than hanging CI.) Never re-run an app that
    timed out without changing something first.
@@ -86,6 +90,11 @@ looks like a build failure but is really an unset environment.
      driven, `mem()` before `stream()` on a doubled-up ISE, `size % stride == 0`,
      replay count matching the stream length).
    - Compile error → **BUILD FAILED**, with the first error line.
+     An undeclared `STRELA_V1_PERIPH_*` / `STRELA_V2_PERIPH_*` (or any
+     `<NAME>_PERIPH_*`) means the IP is **disabled** in `ext_periph` of
+     `config/mcu-gen-config.py` (the committed config may have it commented
+     out), not that the app is broken: report that and stop — enabling it is the
+     caller's decision, and needs `make mcu-gen` plus a model rebuild.
 
 4. **Collect the performance counters** the STRELA apps print: `TOT` (total
    cycles), `CFG` (configuration), `TAB` (descriptor table fetch), `STL` (stall)
