@@ -249,6 +249,24 @@ in 12437 / 12436 at `--width 32` / `16`: the single-lane 4x4 relu is **fabric-pa
 element (`STL` 1), so narrow elements save memory and bus words (a quarter of each at 8 bits) but no
 cycles here. Width pays off in cycles only where a kernel is memory-paced.
 
+**Several STRELA v1 instances.** The SoC can carry more than one: name them `strela_v1_0`,
+`strela_v1_1`, ... in `ext_periph`, give each its own block of `strela_v1_pkg::NUM_SE` bus masters in
+`gr_heep_peripherals.sv.tpl`, and `gr_heep.h` gets `STRELA_V1_<n>_PERIPH_*`. `strela.h` then
+aliases `STRELA_V1_PERIPH_*` to instance 0, so the single-instance apps run unchanged. With two
+v1 instances on masters 0-15, STRELA v2 has no masters left and stays disabled. `strela_v1_dual_fir`
+runs `strela_v1_fir`'s kernel on two instances, first one after the other, then both at once, then
+both at once with instance 1 on 16-bit streams (an int16 copy of its signal, same golden), and is
+the app to read for that: both share the fast external-peripheral interrupt, so it waits on each
+instance's sticky `STATUS.EXEC_DONE` rather than counting interrupts, and it stops each instance's
+counters as soon as that one finishes, since `mcycle` does not advance while the core sleeps in WFI.
+The element widths are per instance — the third phase checks that instance 0 keeps streaming 32-bit
+words next to instance 1's 16-bit ones. Measured `TOT` 5539 / 5538 per instance alone and 5550 for
+both at once, **1.99x**: the fabric-paced FIR absorbs the shared bus (`STL` 1022 / 1298 at 32 bits,
+168 / 697 with instance 1 at 16) without moving `TOT`. That holds only with its outputs in the
+interleaved banks: left in `.data` like `strela_v1_fir`'s, the two `y` arrays share one 64 KiB bank,
+which takes one write per cycle for both, and each instance drops to half rate (`STL` 4093, 1.32x,
+measured before the obione rework).
+
 ### Software applications (`sw/applications/`)
 
 Two families:
