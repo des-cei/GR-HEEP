@@ -9,4 +9,4 @@
 	url = git@github.com:des-cei/ntt_kyber.git
 [submodule "hw/vendor/vermu"]
 	path = hw/vendor/vermu
-	url = https://github.com/des-cei/vermu.git
+	url = git@github.com:des-cei/vermu.git
