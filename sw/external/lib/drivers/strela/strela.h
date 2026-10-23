@@ -6,7 +6,7 @@
 //   STRELA v2 (hw/vendor/strela-v2, STRELA_V2_PERIPH_*, strela_v2_regs.h): stream
 //     engines driven by descriptor tables, on the 4x4-HV elastic-cgra fabric.
 //   STRELA v1 (hw/vendor/strela-v1, STRELA_V1_PERIPH_*, strela_v1_regs.h):
-//     memory nodes programmed through MMIO registers, on the plain 4x4 fabric.
+//     stream engines programmed through MMIO registers, on the plain 4x4 fabric.
 //
 // Both fabrics are generated from the same elastic-cgra, so a PE has the same
 // 5-word configuration and the same place in its column's configuration chain
@@ -257,39 +257,58 @@ static inline void set_pe_delay_value(uint32_t *conf_addr, uint8_t pe_number, ui
 /*************** STRELA v1 ***************/
 
 // No router words: the bitstream is the four columns back to back, each
-// (NPE / NCOLS) PEs x 5 words. Input memory node i loads column i's slice
-// (STRELA_V1_CONFIG_BYTES / NCOLS bytes from CONF_ADDR + i * that) on its own,
-// so CONF_ADDR takes the whole array.
+// (NPE / NCOLS) PEs x 5 words. Input stream engine (ISE) i loads column i's
+// slice (STRELA_V1_CONFIG_BYTES / NCOLS bytes from CONF_ADDR + i * that) on its
+// own, so CONF_ADDR takes the whole array.
 #define STRELA_V1_CONFIG_SIZE (NPE * PE_WORDS)
 #define STRELA_V1_CONFIG_BYTES (STRELA_V1_CONFIG_SIZE * 4)
 
-// Input memory node i streams into the north border of column i, i.e. fabric
-// input channel i; output memory node i drains the south border of column i,
-// fabric output channel i. A kernel header's <ARRAY>_IN_<PORT>_CH /
-// <ARRAY>_OUT_<PORT>_CH defines are therefore node indices directly.
-#define STRELA_V1_INPUT_NODES 4
-#define STRELA_V1_OUTPUT_NODES 4
+// ISE i streams into the north border of column i, i.e. fabric input channel
+// i; output stream engine (OSE) i drains the south border of column i, fabric
+// output channel i. A kernel header's <ARRAY>_IN_<PORT>_CH /
+// <ARRAY>_OUT_<PORT>_CH defines are therefore engine indices directly.
+#define STRELA_V1_NUM_ISE 4
+#define STRELA_V1_NUM_OSE 4
 
-// The per-node registers are evenly spaced in strela_v1_regs.h (include it
-// to use these): an ADDR register, then IMN_i_PARAM / OMN_i_SIZE.
-#define STRELA_V1_IMN_ADDR_REG_OFFSET(i) (STRELA_V1_IMN_0_ADDR_REG_OFFSET + 8u * (i))
-#define STRELA_V1_IMN_PARAM_REG_OFFSET(i) (STRELA_V1_IMN_0_PARAM_REG_OFFSET + 8u * (i))
-#define STRELA_V1_OMN_ADDR_REG_OFFSET(i) (STRELA_V1_OMN_0_ADDR_REG_OFFSET + 8u * (i))
-#define STRELA_V1_OMN_SIZE_REG_OFFSET(i) (STRELA_V1_OMN_0_SIZE_REG_OFFSET + 8u * (i))
+// The per-engine registers are evenly spaced in strela_v1_regs.h (include it
+// to use these): an ADDR register, then a PARAM register.
+#define STRELA_V1_ISE_ADDR_REG_OFFSET(i) (STRELA_V1_ISE_0_ADDR_REG_OFFSET + 8u * (i))
+#define STRELA_V1_ISE_PARAM_REG_OFFSET(i) (STRELA_V1_ISE_0_PARAM_REG_OFFSET + 8u * (i))
+#define STRELA_V1_OSE_ADDR_REG_OFFSET(i) (STRELA_V1_OSE_0_ADDR_REG_OFFSET + 8u * (i))
+#define STRELA_V1_OSE_PARAM_REG_OFFSET(i) (STRELA_V1_OSE_0_PARAM_REG_OFFSET + 8u * (i))
 
-// IMN_i_PARAM for `count` 32-bit elements read `stride` bytes apart. The node
-// stops once its byte offset reaches the size field, so that field is the
-// span stride * count rather than a byte count, and both it and the stride are
-// 16 bits: one stream can reach at most 64 KiB past its base address. The
-// stride must be non-zero. A node given count 0 finishes as soon as execution
-// starts, so unused nodes need no programming beyond CLR_PARAM.
-static inline uint32_t strela_v1_imn_param(uint32_t count, uint32_t stride) {
-	return stride << 16 | (stride * count);
+// Selected element width of a stream, in obione's encoding. ISE_SEW and
+// OSE_SEW hold one 3-bit field per engine, engine i at bits [3i+2:3i], and
+// CLR / CLR_PARAM reset every field to STRELA_V1_SEW_32, so a kernel that
+// streams 32-bit words only needs to write them to undo a narrower run. An
+// ISE sign-extends 8- and 16-bit elements to 32 bits; an OSE writes the low
+// 8 or 16 bits of each result (truncated, not saturated).
+#define STRELA_V1_SEW_8 3u
+#define STRELA_V1_SEW_16 4u
+#define STRELA_V1_SEW_32 5u
+#define STRELA_V1_SEW_MASK 7u
+#define STRELA_V1_SEW_ALL_32 0xB6Du
+
+// Element size in bytes of a STRELA_V1_SEW_* code.
+static inline uint32_t strela_v1_sew_bytes(uint32_t sew) {
+	return 1u << (sew - STRELA_V1_SEW_8);
 }
 
-// OMN_i_SIZE for `count` 32-bit elements, written contiguously.
-static inline uint32_t strela_v1_omn_size(uint32_t count) {
-	return count * 4u;
+// Replace engine i's field of an ISE_SEW / OSE_SEW value.
+static inline uint32_t strela_v1_sew(uint32_t reg, uint32_t i, uint32_t sew) {
+	return (reg & ~(STRELA_V1_SEW_MASK << (3u * i))) | (sew << (3u * i));
+}
+
+// ISE_i_PARAM / OSE_i_PARAM for `count` elements `stride` bytes apart. The
+// engine stops once its byte offset reaches the size field, so that field is
+// the span stride * count rather than a byte count, and both it and the
+// stride are 16 bits: one stream can reach at most 64 KiB past its base
+// address. The stride must be non-zero and a multiple of the element size,
+// and the base address aligned to it; a contiguous stream has stride equal to
+// the element size. An engine given count 0 finishes as soon as execution
+// starts, so unused engines need no programming beyond CLR_PARAM.
+static inline uint32_t strela_v1_se_param(uint32_t count, uint32_t stride) {
+	return stride << 16 | (stride * count);
 }
 
 // PE accessors on a STRELA v1 bitstream (no router words).

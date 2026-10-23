@@ -188,8 +188,8 @@ module gr_heep_peripherals
               .strela_v1_clk_en_i(1'b1),
               .reg_req_i(gr_heep_peripheral_req[gr_heep_pkg::StrelaV1PeriphIdx]),
               .reg_rsp_o(gr_heep_peripheral_rsp[gr_heep_pkg::StrelaV1PeriphIdx]),
-              .masters_req_o(gr_heep_master_req_o[strela_v1_pkg::NODES-1:0]),
-              .masters_resp_i(gr_heep_master_resp_i[strela_v1_pkg::NODES-1:0]),
+              .masters_req_o(gr_heep_master_req_o[strela_v1_pkg::NUM_SE-1:0]),
+              .masters_resp_i(gr_heep_master_resp_i[strela_v1_pkg::NUM_SE-1:0]),
               .intr_o(gr_heep_peripheral_vec_int[${a_slave['idx']}])
           );
         % elif (a_slave['name'] == "StrelaV2"):
@@ -199,8 +199,8 @@ module gr_heep_peripherals
               .rst_ni(rst_ni),
               .reg_req_i(gr_heep_peripheral_req[gr_heep_pkg::StrelaV2PeriphIdx]),
               .reg_rsp_o(gr_heep_peripheral_rsp[gr_heep_pkg::StrelaV2PeriphIdx]),
-              .masters_req_o(gr_heep_master_req_o[strela_v1_pkg::NODES+:strela_v2_pkg::StrelaV2Nodes]),
-              .masters_resp_i(gr_heep_master_resp_i[strela_v1_pkg::NODES+:strela_v2_pkg::StrelaV2Nodes]),
+              .masters_req_o(gr_heep_master_req_o[strela_v1_pkg::NUM_SE+:strela_v2_pkg::StrelaV2Nodes]),
+              .masters_resp_i(gr_heep_master_resp_i[strela_v1_pkg::NUM_SE+:strela_v2_pkg::StrelaV2Nodes]),
               .intr_o(gr_heep_peripheral_vec_int[${a_slave['idx']}]),
               .strela_v2_clk_en_i(1'b1),
               .strela_v2_mem_clk_en_i('1),

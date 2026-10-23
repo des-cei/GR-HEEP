@@ -62,9 +62,10 @@ VERILATOR_MODEL = (
     REPO_ROOT / "build" / "x-heep_systems_gr-heep_0" / "sim-verilator" / "Vtestharness"
 )
 
-# Apps that are not benchmarks: strela_v2_test is a bring-up/bypass app and
-# strela_v2_fully_connected is a legacy TFLM-style app with no golden dataset.
-EXCLUDED = {"strela_v2_test", "strela_v2_fully_connected"}
+# Apps that are not benchmarks: strela_v2_test is a bring-up/bypass app,
+# strela_v2_fully_connected is a legacy TFLM-style app with no golden dataset,
+# and strela_v1_stream_test is the directed test of STRELA v1's stream engines.
+EXCLUDED = {"strela_v2_test", "strela_v2_fully_connected", "strela_v1_stream_test"}
 
 # strela_<name> -> cpu_<name> wherever the two families disagree on the name.
 TWIN_OVERRIDES = {

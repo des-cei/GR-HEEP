@@ -5,11 +5,11 @@
     matD  = alpha * matAB + beta * matC            <- kernel gemm_2
 
 The same split as strela_v2_gemm (STRELA v2), on elastic-cgra's 4x4 solves of the
-same two DFGs. STRELA v1 has no descriptor tables: main.c programs the memory
-nodes and starts the fabric once per 3-row x 1-column block of matAB, then once
+same two DFGs. STRELA v1 has no descriptor tables: main.c programs the stream
+engines and starts the fabric once per 3-row x 1-column block of matAB, then once
 more for the whole of phase 2. matAB is the hand-off between the two phases,
-written by the output nodes of the first and streamed back by the input nodes
-of the second, which is why it carries the interleaved-section attribute like
+written by the output stream engines of the first and streamed back by the
+input stream engines of the second, which is why it carries the interleaved-section attribute like
 the other arrays the CGRA reads.
 
 The reference is computed with plain Python integers and then range-checked
@@ -92,13 +92,13 @@ def main():
     if ni % 3:
         sys.exit(f"error: NI={ni} must be a multiple of 3, the rows one mm "
                  f"run reduces")
-    # A memory node's size field is the 16-bit byte span of its stream; the
+    # A stream engine's size field is the 16-bit byte span of its stream; the
     # widest one is B's column, NK elements NJ words apart.
     for what, span in (("a column of B", 4 * nj * nk),
                        ("half of matAB", 4 * ((ni * nj + 1) // 2))):
         if span > 0xFFFF:
             sys.exit(f"error: {what} spans {span} bytes, past the 16-bit "
-                     f"memory node size field")
+                     f"stream engine size field")
 
     limit = min(ELEM_CAP, safe_elem_limit(nk))
     if limit < 1:
@@ -139,7 +139,7 @@ def main():
     print("")
     print_matrix("int32_t", "matC", ni, nj, c, "NI*NJ", True)
     print("")
-    # Written by phase 1's output nodes, read back by phase 2's input nodes.
+    # Written by phase 1's OSEs, read back by phase 2's ISEs.
     print_matrix("int32_t", "matAB", ni, nj, [0] * (ni * nj), "NI*NJ", True)
     print("")
     # Checked too: in a chain, the intermediate is what places a failure.

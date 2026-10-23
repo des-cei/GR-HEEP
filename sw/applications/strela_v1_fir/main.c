@@ -58,18 +58,18 @@ int main(void) {
     // STRELA v1
     strela_v1 = mmio_region_from_addr(STRELA_V1_PERIPH_START_ADDRESS);
 
-    // Configure STRELA mode. CLR also clears every node parameter, so the
-    // nodes the kernel does not use stay at size 0 and finish immediately.
+    // Configure STRELA mode. CLR also clears every engine parameter, so the
+    // engines the kernel does not use stay at size 0 and finish immediately.
     mmio_region_write32(strela_v1, (ptrdiff_t) STRELA_V1_CTRL_REG_OFFSET, 1 << STRELA_V1_CTRL_CLR_BIT);
     mmio_region_write32(strela_v1, (ptrdiff_t) STRELA_V1_MODE_REG_OFFSET, 1 << STRELA_V1_MODE_INTR_EN_BIT | 1 << STRELA_V1_MODE_PERF_CTR_EN_BIT);
 
-    // Configuration, then one stream in and one stream out. A v1 memory node
+    // Configuration, then one stream in and one stream out. A v1 stream engine
     // index is the fabric channel the io_map binds the port to.
     mmio_region_write32(strela_v1, (ptrdiff_t) STRELA_V1_CONF_ADDR_REG_OFFSET, (uint32_t) fir_kernel);
-    mmio_region_write32(strela_v1, (ptrdiff_t) STRELA_V1_IMN_ADDR_REG_OFFSET(FIR_KERNEL_IN_INPUT0_CH), (uint32_t) x);
-    mmio_region_write32(strela_v1, (ptrdiff_t) STRELA_V1_IMN_PARAM_REG_OFFSET(FIR_KERNEL_IN_INPUT0_CH), strela_v1_imn_param(FIR_SAMPLES, sizeof(int32_t)));
-    mmio_region_write32(strela_v1, (ptrdiff_t) STRELA_V1_OMN_ADDR_REG_OFFSET(FIR_KERNEL_OUT_OUTPUT0_CH), (uint32_t) y);
-    mmio_region_write32(strela_v1, (ptrdiff_t) STRELA_V1_OMN_SIZE_REG_OFFSET(FIR_KERNEL_OUT_OUTPUT0_CH), strela_v1_omn_size(FIR_SAMPLES));
+    mmio_region_write32(strela_v1, (ptrdiff_t) STRELA_V1_ISE_ADDR_REG_OFFSET(FIR_KERNEL_IN_INPUT0_CH), (uint32_t) x);
+    mmio_region_write32(strela_v1, (ptrdiff_t) STRELA_V1_ISE_PARAM_REG_OFFSET(FIR_KERNEL_IN_INPUT0_CH), strela_v1_se_param(FIR_SAMPLES, sizeof(int32_t)));
+    mmio_region_write32(strela_v1, (ptrdiff_t) STRELA_V1_OSE_ADDR_REG_OFFSET(FIR_KERNEL_OUT_OUTPUT0_CH), (uint32_t) y);
+    mmio_region_write32(strela_v1, (ptrdiff_t) STRELA_V1_OSE_PARAM_REG_OFFSET(FIR_KERNEL_OUT_OUTPUT0_CH), strela_v1_se_param(FIR_SAMPLES, sizeof(int32_t)));
 
     // Start STRELA execution
     mmio_region_write32(strela_v1, (ptrdiff_t) STRELA_V1_CTRL_REG_OFFSET, 1 << STRELA_V1_CTRL_START_BIT);

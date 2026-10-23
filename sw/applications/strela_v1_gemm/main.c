@@ -38,7 +38,7 @@ static inline void strela_v1_write(uint32_t offset, uint32_t value) {
 }
 
 // Start one execution with the parameters already programmed, and poll until
-// every memory node is done. EXEC_DONE is cleared by START itself, so there is
+// every stream engine is done. EXEC_DONE is cleared by START itself, so there is
 // no stale bit to clear first.
 static void strela_v1_run(void) {
     strela_v1_write(STRELA_V1_CTRL_REG_OFFSET, 1 << STRELA_V1_CTRL_START_BIT);
@@ -71,31 +71,31 @@ int main(void) {
     strela_v1_write(STRELA_V1_MODE_REG_OFFSET, 1 << STRELA_V1_MODE_PERF_CTR_EN_BIT);
 
     // Phase 1: matAB = matA * matB, one run per 3-row x 1-column block. The
-    // node sizes and strides are the same for every block and survive across
+    // engine sizes and strides are the same for every block and survive across
     // runs, as does the configuration (the fabric is configured by the first
     // START only), so a block costs its addresses and a START.
     strela_v1_write(STRELA_V1_CONF_ADDR_REG_OFFSET, (uint32_t) mm_kernel);
-    strela_v1_write(STRELA_V1_IMN_PARAM_REG_OFFSET(MM_KERNEL_IN_INPUT3_CH), strela_v1_imn_param(NK, NJ * sizeof(int32_t)));
+    strela_v1_write(STRELA_V1_ISE_PARAM_REG_OFFSET(MM_KERNEL_IN_INPUT3_CH), strela_v1_se_param(NK, NJ * sizeof(int32_t)));
     for (int r = 0; r < 3; r++) {
-        strela_v1_write(STRELA_V1_IMN_PARAM_REG_OFFSET(MM_IN_ROW[r]), strela_v1_imn_param(NK, sizeof(int32_t)));
-        strela_v1_write(STRELA_V1_OMN_SIZE_REG_OFFSET(MM_OUT_ROW[r]), strela_v1_omn_size(1));
+        strela_v1_write(STRELA_V1_ISE_PARAM_REG_OFFSET(MM_IN_ROW[r]), strela_v1_se_param(NK, sizeof(int32_t)));
+        strela_v1_write(STRELA_V1_OSE_PARAM_REG_OFFSET(MM_OUT_ROW[r]), strela_v1_se_param(1, sizeof(int32_t)));
     }
 
     for (int i = 0; i < NI; i += 3) {
         for (int r = 0; r < 3; r++)
-            strela_v1_write(STRELA_V1_IMN_ADDR_REG_OFFSET(MM_IN_ROW[r]), (uint32_t) &matA[(i + r) * NK]);
+            strela_v1_write(STRELA_V1_ISE_ADDR_REG_OFFSET(MM_IN_ROW[r]), (uint32_t) &matA[(i + r) * NK]);
         for (int j = 0; j < NJ; j++) {
-            strela_v1_write(STRELA_V1_IMN_ADDR_REG_OFFSET(MM_KERNEL_IN_INPUT3_CH), (uint32_t) &matB[j]);
+            strela_v1_write(STRELA_V1_ISE_ADDR_REG_OFFSET(MM_KERNEL_IN_INPUT3_CH), (uint32_t) &matB[j]);
             for (int r = 0; r < 3; r++)
-                strela_v1_write(STRELA_V1_OMN_ADDR_REG_OFFSET(MM_OUT_ROW[r]), (uint32_t) &matAB[(i + r) * NJ + j]);
+                strela_v1_write(STRELA_V1_OSE_ADDR_REG_OFFSET(MM_OUT_ROW[r]), (uint32_t) &matAB[(i + r) * NJ + j]);
             strela_v1_run();
         }
     }
 
     // Phase 2: matD = alpha * matAB + beta * matC, two lanes over the two
     // halves of the flat arrays, in one run. CLR_CONF makes the next START
-    // load gemm_2, and CLR_PARAM drops phase 1's node parameters: mm's output
-    // nodes 1 and 2 are unused here and would otherwise wait for data forever.
+    // load gemm_2, and CLR_PARAM drops phase 1's engine parameters: mm's
+    // OSEs 1 and 2 are unused here and would otherwise wait for data forever.
     // It clears CONF_ADDR too, so that is written after.
     strela_v1_write(STRELA_V1_CTRL_REG_OFFSET, 1 << STRELA_V1_CTRL_CLR_CONF_BIT | 1 << STRELA_V1_CTRL_CLR_PARAM_BIT);
     strela_v1_write(STRELA_V1_CONF_ADDR_REG_OFFSET, (uint32_t) gemm_2_kernel);
@@ -103,19 +103,19 @@ int main(void) {
     const uint32_t half_a = (NI * NJ + 1) / 2;
     const uint32_t half_b = NI * NJ - half_a;
 
-    strela_v1_write(STRELA_V1_IMN_ADDR_REG_OFFSET(GEMM_2_KERNEL_IN_INPUT0_CH), (uint32_t) &matAB[0]);
-    strela_v1_write(STRELA_V1_IMN_PARAM_REG_OFFSET(GEMM_2_KERNEL_IN_INPUT0_CH), strela_v1_imn_param(half_a, sizeof(int32_t)));
-    strela_v1_write(STRELA_V1_IMN_ADDR_REG_OFFSET(GEMM_2_KERNEL_IN_INPUT1_CH), (uint32_t) &matC[0]);
-    strela_v1_write(STRELA_V1_IMN_PARAM_REG_OFFSET(GEMM_2_KERNEL_IN_INPUT1_CH), strela_v1_imn_param(half_a, sizeof(int32_t)));
-    strela_v1_write(STRELA_V1_OMN_ADDR_REG_OFFSET(GEMM_2_KERNEL_OUT_OUTPUT0_CH), (uint32_t) &matD[0]);
-    strela_v1_write(STRELA_V1_OMN_SIZE_REG_OFFSET(GEMM_2_KERNEL_OUT_OUTPUT0_CH), strela_v1_omn_size(half_a));
+    strela_v1_write(STRELA_V1_ISE_ADDR_REG_OFFSET(GEMM_2_KERNEL_IN_INPUT0_CH), (uint32_t) &matAB[0]);
+    strela_v1_write(STRELA_V1_ISE_PARAM_REG_OFFSET(GEMM_2_KERNEL_IN_INPUT0_CH), strela_v1_se_param(half_a, sizeof(int32_t)));
+    strela_v1_write(STRELA_V1_ISE_ADDR_REG_OFFSET(GEMM_2_KERNEL_IN_INPUT1_CH), (uint32_t) &matC[0]);
+    strela_v1_write(STRELA_V1_ISE_PARAM_REG_OFFSET(GEMM_2_KERNEL_IN_INPUT1_CH), strela_v1_se_param(half_a, sizeof(int32_t)));
+    strela_v1_write(STRELA_V1_OSE_ADDR_REG_OFFSET(GEMM_2_KERNEL_OUT_OUTPUT0_CH), (uint32_t) &matD[0]);
+    strela_v1_write(STRELA_V1_OSE_PARAM_REG_OFFSET(GEMM_2_KERNEL_OUT_OUTPUT0_CH), strela_v1_se_param(half_a, sizeof(int32_t)));
 
-    strela_v1_write(STRELA_V1_IMN_ADDR_REG_OFFSET(GEMM_2_KERNEL_IN_INPUT2_CH), (uint32_t) &matAB[half_a]);
-    strela_v1_write(STRELA_V1_IMN_PARAM_REG_OFFSET(GEMM_2_KERNEL_IN_INPUT2_CH), strela_v1_imn_param(half_b, sizeof(int32_t)));
-    strela_v1_write(STRELA_V1_IMN_ADDR_REG_OFFSET(GEMM_2_KERNEL_IN_INPUT3_CH), (uint32_t) &matC[half_a]);
-    strela_v1_write(STRELA_V1_IMN_PARAM_REG_OFFSET(GEMM_2_KERNEL_IN_INPUT3_CH), strela_v1_imn_param(half_b, sizeof(int32_t)));
-    strela_v1_write(STRELA_V1_OMN_ADDR_REG_OFFSET(GEMM_2_KERNEL_OUT_OUTPUT1_CH), (uint32_t) &matD[half_a]);
-    strela_v1_write(STRELA_V1_OMN_SIZE_REG_OFFSET(GEMM_2_KERNEL_OUT_OUTPUT1_CH), strela_v1_omn_size(half_b));
+    strela_v1_write(STRELA_V1_ISE_ADDR_REG_OFFSET(GEMM_2_KERNEL_IN_INPUT2_CH), (uint32_t) &matAB[half_a]);
+    strela_v1_write(STRELA_V1_ISE_PARAM_REG_OFFSET(GEMM_2_KERNEL_IN_INPUT2_CH), strela_v1_se_param(half_b, sizeof(int32_t)));
+    strela_v1_write(STRELA_V1_ISE_ADDR_REG_OFFSET(GEMM_2_KERNEL_IN_INPUT3_CH), (uint32_t) &matC[half_a]);
+    strela_v1_write(STRELA_V1_ISE_PARAM_REG_OFFSET(GEMM_2_KERNEL_IN_INPUT3_CH), strela_v1_se_param(half_b, sizeof(int32_t)));
+    strela_v1_write(STRELA_V1_OSE_ADDR_REG_OFFSET(GEMM_2_KERNEL_OUT_OUTPUT1_CH), (uint32_t) &matD[half_a]);
+    strela_v1_write(STRELA_V1_OSE_PARAM_REG_OFFSET(GEMM_2_KERNEL_OUT_OUTPUT1_CH), strela_v1_se_param(half_b, sizeof(int32_t)));
 
     strela_v1_run();
 

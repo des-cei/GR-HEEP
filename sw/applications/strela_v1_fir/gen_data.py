@@ -87,11 +87,11 @@ def main():
     n, amp = args.N, args.amplitude
     if n < len(TAPS):
         sys.exit(f"error: N={n} must be at least {len(TAPS)}, the tap count")
-    # One memory node streams the whole signal, and its 16-bit size field is
+    # One stream engine streams the whole signal, and its 16-bit size field is
     # the byte span of the stream.
     if 4 * n > 0xFFFF:
-        sys.exit(f"error: N={n} spans {4 * n} bytes, past the 16-bit memory "
-                 f"node size field; at most {0xFFFF // 4} samples")
+        sys.exit(f"error: N={n} spans {4 * n} bytes, past the 16-bit stream "
+                 f"engine size field; at most {0xFFFF // 4} samples")
     if amp < 1:
         sys.exit(f"error: --amplitude {amp} must be positive")
 

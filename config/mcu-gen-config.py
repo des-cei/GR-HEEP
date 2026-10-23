@@ -225,7 +225,7 @@ def config():
 
 def gr_heep_config():
 
-    # STRELA v1 owns masters 0-7 (4 input + 4 output memory nodes), STRELA v2
+    # STRELA v1 owns masters 0-7 (4 ISEs + 4 OSEs), STRELA v2
     # masters 8-15 (4 ISEs + 4 OSEs); see gr_heep_peripherals.sv.tpl.
     ext_xbar_nmasters = 0  # 16
 

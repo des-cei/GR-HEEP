@@ -172,12 +172,12 @@ external peripheral, interrupt and set of bus masters (`config/mcu-gen-config.py
 | | STRELA v2 | STRELA v1 |
 |---|---|---|
 | Peripheral (`gr_heep.h`) | `STRELA_V2_PERIPH_*`, ext. periph `+0x1000` | `STRELA_V1_PERIPH_*`, ext. periph `+0x0000` |
-| External bus masters | 8–15 (4 ISEs, 4 OSEs) | 0–7 (4 input, 4 output memory nodes) |
+| External bus masters | 8–15 (4 ISEs, 4 OSEs) | 0–7 (4 ISEs, 4 OSEs) |
 | External interrupt | 1 | 0 (both are OR'd onto the fast external-peripheral interrupt) |
 | Registers | `strela_v2_regs.h`, `STRELA_V2_*` | `strela_v1_regs.h`, `STRELA_V1_*` |
 | RTL names | `strela_v2*`, `StrelaV2*` parameters | `strela_v1*` |
 | Fabric | elastic-cgra 4x4-HV, module `cgra` | elastic-cgra 4x4, module `strela_v1_cgra` |
-| Programming | descriptor tables, one START per run | MMIO node registers, one START per stream set |
+| Programming | descriptor tables, one START per run | MMIO engine registers, one START per stream set |
 | Apps | `strela_v2_<kernel>` | `strela_v1_<kernel>` |
 | Tooling | `strela_v2_{desc,isa,bind,lint}.py`, `strela-v2-app`/`strela-v2-audit` skills, `strela-v2-map` agent | `regress2kernel.py --fabric 4x4` |
 
@@ -195,14 +195,18 @@ What makes the coexistence work, and so what not to undo:
   `configs/4x4.hjson`, renamed and committed (`make -C hw/vendor/strela-v1 cgra-gen`). **Bump the
   two elastic-cgra pointers together**, or v1's top gets compiled against a library it was not
   generated from.
+- **One obione serves both, too.** v1's stream engines are built on the same obione DMA as v2's,
+  and `hw/vendor/strela-v1/rtl/obione` is its own submodule, hidden by the same `FUSESOC_IGNORE`, so
+  FuseSoC compiles v2's copy. **Bump the two obione pointers together** as well.
 - **One driver header, `strela.h`**, is now a GR-HEEP file (`sw/external/lib/drivers/strela/strela.h`,
   no longer a symlink into strela-v2). Its first section is shared: both fabrics have the same PE
   configuration word and the same `PE_POSITION`, and differ only in the router word v2 appends to each
   column, so `strela_{get,set}_pe_{const,delay_value,initial_value}()` take the router word count.
   Below that, the v2 section keeps the descriptor API unprefixed (`memory_node_t`, the opcodes,
   `CONFIG_SIZE`, `set_pe_const()`… — none of it is named `strela`) and v1's names are
-  `STRELA_V1_*` / `strela_v1_*` (`STRELA_V1_CONFIG_SIZE`, the per-node register offset macros,
-  `strela_v1_imn_param()`, `strela_v1_omn_size()`, the v1 PE accessors). The v2 part mirrors
+  `STRELA_V1_*` / `strela_v1_*` (`STRELA_V1_CONFIG_SIZE`, the per-engine register offset macros
+  `STRELA_V1_{ISE,OSE}_{ADDR,PARAM}_REG_OFFSET(i)`, `strela_v1_se_param()`, the `STRELA_V1_SEW_*`
+  codes with `strela_v1_sew()` / `strela_v1_sew_bytes()`, the v1 PE accessors). The v2 part mirrors
   `hw/vendor/strela-v2/sw/strela_v2.h`; keep the two in step.
 - **v1 kernels come from elastic-cgra's `regress/4x4/`**, through
   `scripts/regress2kernel.py <app> --fabric 4x4`, which sizes the array `STRELA_V1_CONFIG_SIZE`.
@@ -210,23 +214,40 @@ What makes the coexistence work, and so what not to undo:
   pre-elastic-cgra in-tree fabric, with a different PE word layout and chain order, and **cannot be
   reused** — port the app, not its `kernels.h`.
 
-Programming STRELA v1, as `strela_v1_fir` and `strela_v1_gemm` do: memory node `i` is fabric channel
-`i`, so a kernel header's `<ARRAY>_IN_<PORT>_CH` / `_OUT_<PORT>_CH` is the node index directly. `CLR`
-clears every parameter, after which an unused node has size 0 and finishes immediately; `CONF_ADDR`
-takes the whole bitstream and each input node fetches its own column. The configuration is loaded by
-the first `START` only and reused by later ones until `CLR_CONF`, and node parameters persist across
-runs, so a loop of runs re-writes only the addresses that move. Switching kernels needs
-`CLR_CONF | CLR_PARAM` — the latter so that nodes the new kernel does not use go back to size 0 instead
-of waiting forever for data — and `CLR_PARAM` also clears `CONF_ADDR`, so write it after. An input
-node's size field is the byte *span* `stride * count`, 16 bits, so one stream reaches at most 64 KiB.
-A kernel whose input is forked to several lanes (mm's B column) cannot run with a lane's node idle;
-the lazy fork stalls the others. v1 apps print `TOT`/`CFG`/`EXE`/`STL` (no descriptor fetch, so no
+Programming STRELA v1, as `strela_v1_fir` and `strela_v1_gemm` do: input stream engine (ISE) `i` is
+fabric input channel `i` and output stream engine (OSE) `i` fabric output channel `i`, so a kernel
+header's `<ARRAY>_IN_<PORT>_CH` / `_OUT_<PORT>_CH` is the engine index directly. Each engine has an
+`ADDR` register and a `PARAM` register (`size` [15:0], `stride` [31:16], built by
+`strela_v1_se_param(count, stride)`), and two global registers, `ISE_SEW` and `OSE_SEW`, give every
+engine its element width in a 3-bit field (`[3i+2:3i]`, room for an 8x8 fabric's eight engines):
+`STRELA_V1_SEW_8` / `_16` / `_32`, obione's codes 3/4/5. The size is the byte *span* `stride *
+count`, 16 bits, so one stream reaches at most 64 KiB; strides and addresses must be multiples of
+the element size. An ISE sign-extends 8/16-bit elements to the fabric's 32 bits, and an OSE writes
+the low 8/16 bits of each result (truncated, not saturated) with byte enables, at any stride. `CLR`
+clears every parameter and sets every width back to 32 bits, after which an unused engine has size
+0 and finishes immediately, and a 32-bit app never writes the SEW registers; `CONF_ADDR` takes the
+whole bitstream and each ISE fetches its own column. The configuration is loaded by the first
+`START` only and reused by later ones until `CLR_CONF`, and engine parameters (widths included)
+persist across runs, so a loop of runs re-writes only the addresses that move. Switching kernels
+needs `CLR_CONF | CLR_PARAM` — the latter so that engines the new kernel does not use go back to
+size 0 instead of waiting forever for data — and `CLR_PARAM` also clears `CONF_ADDR`, so write it
+after. A kernel whose input is forked to several lanes (mm's B column) cannot run with a lane's
+engine idle; the lazy fork stalls the others. `strela_v1_stream_test` is the directed test of the
+engines (every width pair, strides, unaligned bases, the span limit, canary bytes around every
+output, per-engine widths on gemm_2), and `strela_v1_relu8` / `cpu_relu8` the narrow-data pair.
+v1 apps print `TOT`/`CFG`/`EXE`/`STL` (no descriptor fetch, so no
 `TAB`), and `TOT` counts from the `MODE` write, CPU register programming between runs included.
 `scripts/sim/bench_apps.py` pairs `strela_v1_<kernel>` with the same `cpu_<kernel>` twin as v2.
-Measured on Verilator, same data as the v2 twins: `strela_v1_fir` (4096 samples, one run) `TOT` 5539
+Measured on Verilator, same data as the v2 twins: `strela_v1_fir` (4096 samples, one run) `TOT` 5543
 against `strela_v2_fir`'s 6499 — a single stream with no descriptor fetch is where v1 is at its best —
-and `strela_v1_gemm` (60x70x80, 1400 mm runs + 1 gemm_2 run) `TOT` 213509 against `strela_v2_gemm`'s
-60123, the cost of a CPU-programmed START per 3x1 block of the product.
+and `strela_v1_gemm` (60x70x80, 1400 mm runs + 1 gemm_2 run) `TOT` 212435 against `strela_v2_gemm`'s
+60123, the cost of a CPU-programmed START per 3x1 block of the product. (Before the engines moved to
+obione the two were 5539 and 213509: an obione transfer starts the cycle after its engine enters the
+state, and an OSE now waits for its last write response, which costs about 2 `EXE` cycles per run.)
+`strela_v1_relu8` (4096 int8 elements) runs in `TOT` 12439 against `cpu_relu8`'s 59393, **4.8x**, and
+in 12437 / 12436 at `--width 32` / `16`: the single-lane 4x4 relu is **fabric-paced** at 3 cycles per
+element (`STL` 1), so narrow elements save memory and bus words (a quarter of each at 8 bits) but no
+cycles here. Width pays off in cycles only where a kernel is memory-paced.
 
 ### Software applications (`sw/applications/`)
 
@@ -282,6 +303,10 @@ Two families:
     256 butterflies, 8-bit samples, in place over `real[]`/`imag[]` — so the two SoCs run the
     same kernel on the same data volume. Do not raise it to 4096 without raising the x-trela
     twin too.
+    `cpu_relu8` is the twin of `strela_v1_relu8`, the one STRELA v1 app with narrow data:
+    4096 **int8** elements, and the two share one `gen_data.py` byte for byte. Its
+    `--width 16|32` emits the same values at a wider type (and the matching SEW for the
+    accelerator), so the pair can be measured on identical data at every element width.
   `cpu_mm` predates both groups: it is *not* a PolyBench kernel (it is the CPU twin of
   `strela_v2_mm`, sharing its generator and its 64x64x64 default), has no `polybench_cpu.c` — the
   triple loop is inlined in `main.c` — and toggles GPIOs around the timed region.
@@ -712,7 +737,7 @@ committed together with the resulting vendored file changes.
 Both STRELAs (`hw/vendor/strela-v2`, `hw/vendor/strela-v1`) are plain git submodules (see
 `.gitmodules`), not managed through the vendor tool. Each imports X-HEEP's `xheep_obi_pkg` / `xheep_reg_pkg` (and their
 `xheep_obi_req_t`, `xheep_obi_rsp_t`, `xheep_reg_req_t`, `xheep_reg_rsp_t` types) directly, as does its
-nested `obione` (v1 has none); the old `obi_pkg` / `reg_pkg` names no longer exist in the vendored X-HEEP, so do not
+nested `obione`; the old `obi_pkg` / `reg_pkg` names no longer exist in the vendored X-HEEP, so do not
 reintroduce them as shims here. A change to STRELA is committed innermost first (obione, then
 strela-v2 or strela-v1, then the pointer bump in GR-HEEP) and pushed in the same order.
 

@@ -1,0 +1,70 @@
+{
+  "inputs": {
+    "input3": {
+      "channel": 0,
+      "location": [
+        "pe",
+        0,
+        "north"
+      ],
+      "address": "0x500",
+      "stride": 4,
+      "size": 100
+    },
+    "input2": {
+      "channel": 1,
+      "location": [
+        "pe",
+        1,
+        "north"
+      ],
+      "address": "0x400",
+      "stride": 4,
+      "size": 100
+    },
+    "input0": {
+      "channel": 2,
+      "location": [
+        "pe",
+        2,
+        "north"
+      ],
+      "address": "0x200",
+      "stride": 4,
+      "size": 100
+    },
+    "input1": {
+      "channel": 3,
+      "location": [
+        "pe",
+        3,
+        "north"
+      ],
+      "address": "0x300",
+      "stride": 4,
+      "size": 100
+    }
+  },
+  "outputs": {
+    "output1": {
+      "channel": 0,
+      "location": [
+        "pe",
+        12,
+        "south"
+      ],
+      "address": "0x700",
+      "size": 100
+    },
+    "output0": {
+      "channel": 3,
+      "location": [
+        "pe",
+        15,
+        "south"
+      ],
+      "address": "0x600",
+      "size": 100
+    }
+  }
+}
