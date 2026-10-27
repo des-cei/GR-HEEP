@@ -16,6 +16,7 @@ filesets:
     - ceimmupm:accelerators:strela-v1
     - ceimmupm:accelerators:strela-v2
     - ceimmupm:accelerators:ntt-kyber
+    - ceimmupm:accelerators:vermu
     files:
     - hw/gr-heep/gr_heep_pkg.sv
     - hw/gr-heep/gr_heep_xbar.sv
