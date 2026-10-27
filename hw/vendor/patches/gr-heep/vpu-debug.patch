@@ -1,0 +1,160 @@
+diff --git a/Makefile b/Makefile
+index 2b2a51b..ac5c6d8 100644
+--- a/Makefile
++++ b/Makefile
+@@ -41,6 +41,12 @@ FLASH_BIN            = $(shell ls $(GENESYS2_VIVADO_DIR)/*_flash.bin 2>/dev/null
+ OPENFPGALOADER      ?= openFPGALoader
+ OPENFPGALOADER_FLAGS ?= --verify
+ 
++# VPU configuration (VPU_N_IPU also sets the number of external xbar masters in mcu-gen)
++VPU_DIR		:= $(ROOT_DIR)/hw/vendor/vermu
++VPU_VLEN	?= 128
++VPU_N_IPU	?= 4
++export VPU_VLEN VPU_N_IPU
++
+ # X-HEEP mcu-gen configuration
+ X_HEEP_CFG  		?= $(ROOT_DIR)/config/mcu-gen-config.py
+ PADS_CFG_ASIC		?= $(ROOT_DIR)/config/gr-heep_pad_cfg.py
+@@ -126,6 +132,8 @@ app: gen-app-data
+ ## Generate X-HEEP MCU files
+ .PHONY: mcu-gen
+ mcu-gen: | $(BUILD_DIR)/
++	@echo "### Generating VPU package (VPU_VLEN=$(VPU_VLEN), VPU_N_IPU=$(VPU_N_IPU))..."
++	$(MAKE) -C $(VPU_DIR) generate-vpu-pkg VPU_VLEN=$(VPU_VLEN) VPU_N_IPU=$(VPU_N_IPU)
+ 	@echo "### Building X-HEEP MCU for '$(TARGET)'..."
+ 	$(MAKE) -f $(XHEEP_MAKE) mcu-gen \
+ 		X_HEEP_CFG=$(X_HEEP_CFG) \
+diff --git a/config/mcu-gen-config.py b/config/mcu-gen-config.py
+index 5fd5a24..42cfb64 100644
+--- a/config/mcu-gen-config.py
++++ b/config/mcu-gen-config.py
+@@ -5,6 +5,7 @@
+ # Author: David Mallasén
+ # Description: X-HEEP and GR-HEEP configuration for mcu-gen.
+ 
++import os
+ import re
+ from xheep import XHeep
+ from address_map.address_map import AddressMap
+@@ -51,35 +52,35 @@ def config():
+     system = XHeep(BusType.NtoM)
+ 
+     # Set cv32e40px CPU
+-    system.set_cpu(CPU("cv32e40p"))
+-
+-    # system.set_xif(
+-    #     CvXIf(
+-    #         x_num_rs=2,
+-    #         x_id_width=4,
+-    #         x_mem_width=32,
+-    #         x_rfr_width=32,
+-    #         x_rfw_width=32,
+-    #         x_misa=0x0,
+-    #         x_ecs_xs=0x0,
+-    #     )
+-    # )
++    system.set_cpu(CPU("cv32e20"))
++
++    system.set_xif(
++        CvXIf(
++            x_num_rs=2,
++            x_id_width=4,
++            x_mem_width=32,
++            x_rfr_width=32,
++            x_rfw_width=32,
++            x_misa=0x0,
++            x_ecs_xs=0x0,
++        )
++    )
+ 
+     # Memory subsystem
+     # - 2 x 32kiB firmware and data
+     # - 2 x 16kiB interleaved banks
+     memory_ss = MemorySS()
+-    memory_ss.add_ram_banks([64] * 8)
+-    memory_ss.add_ram_banks_il(8, 64, "data_interleaved")
++    memory_ss.add_ram_banks([128] * 11)
++    # memory_ss.add_ram_banks_il(8, 64, "data_interleaved")
+     # Linker script sections
+-    memory_ss.add_linker_section(LinkerSection.by_size("code", 0, 0x00018000))
+-    memory_ss.add_linker_section(LinkerSection("data", 0x00018000, None))
+-    memory_ss.add_linker_section_for_banks(
+-        "data_interleaved",
+-        subsections=[LinkerSubsection("xheep_data_interleaved")],
+-        interleaved=True,
+-        il_group_name="data_interleaved",
+-    )
++    memory_ss.add_linker_section(LinkerSection.by_size("code", 0, 0x0000E800))
++    memory_ss.add_linker_section(LinkerSection("data", 0x0000E800, None))
++    # memory_ss.add_linker_section_for_banks(
++    #     "data_interleaved",
++    #     subsections=[LinkerSubsection("xheep_data_interleaved")],
++    #     interleaved=True,
++    #     il_group_name="data_interleaved",
++    # )
+     system.set_memory_ss(memory_ss)
+ 
+     # Stack and heap sizes
+@@ -130,8 +131,8 @@ def config():
+             length=0x00010000,
+             ch_length=0x100,
+             num_channels=4,
+-            num_master_ports=2,
+-            num_channels_per_master_port=2,
++            num_master_ports=1,
++            num_channels_per_master_port=1,
+             fifo_depth=4,
+             addr_mode="yes",
+             subaddr_mode="yes",
+@@ -227,7 +228,7 @@ def gr_heep_config():
+ 
+     # STRELA v1 owns masters 0-7 (4 ISEs + 4 OSEs), STRELA v2
+     # masters 8-15 (4 ISEs + 4 OSEs); see gr_heep_peripherals.sv.tpl.
+-    ext_xbar_nmasters = 0  # 16
++    ext_xbar_nmasters = int(os.environ.get("VPU_N_IPU", 4))  # 16
+ 
+     # External slaves memory map
+     ext_xbar_slaves = {
+diff --git a/hw/gr-heep/gr_heep_peripherals.sv.tpl b/hw/gr-heep/gr_heep_peripherals.sv.tpl
+index 9251ea1..157b708 100644
+--- a/hw/gr-heep/gr_heep_peripherals.sv.tpl
++++ b/hw/gr-heep/gr_heep_peripherals.sv.tpl
+@@ -265,6 +265,38 @@ module gr_heep_peripherals
+     //     .x_result_ready_i(cve2_x_result_ready),
+     //     .x_result_o(cve2_x_result)
+     // );
++    vpu_top #(
++        .NrRgprPorts(cve2_pkg::X_NUM_RS),
++        .XLEN(cve2_pkg::X_RFR_WIDTH),
++        .readregflags_t(cve2_pkg::readregflags_t),
++        .writeregflags_t(cve2_pkg::writeregflags_t),
++        .id_t(cve2_pkg::id_t),
++        .hartid_t(cve2_pkg::hartid_t),
++        .x_issue_req_t(cve2_pkg::x_issue_req_t),
++        .x_issue_resp_t(cve2_pkg::x_issue_resp_t),
++        .x_register_t(cve2_pkg::x_register_t),
++        .x_commit_t(cve2_pkg::x_commit_t),
++        .x_result_t(cve2_pkg::x_result_t),
++        .obi_req_t(obi_pkg::obi_req_t),
++        .obi_resp_t(obi_pkg::obi_resp_t)
++    ) i_vpu (
++        .clk_i(clk_i),
++        .rst_ni(rst_ni),
++        .x_issue_valid_i(cve2_x_issue_valid),
++        .x_issue_ready_o(cve2_x_issue_ready),
++        .x_issue_req_i(cve2_x_issue_req),
++        .x_issue_resp_o(cve2_x_issue_resp),
++        .x_register_i(cve2_x_register),
++        .x_register_valid_i(cve2_x_register_valid),
++        .x_register_ready_o(),
++        .x_commit_valid_i(cve2_x_commit_valid),
++        .x_commit_i(cve2_x_commit),
++        .x_result_valid_o(cve2_x_result_valid),
++        .x_result_ready_i(cve2_x_result_ready),
++        .x_result_o(cve2_x_result),
++        .masters_resp_i(gr_heep_master_resp_i[${gr_heep["xbar_nmasters"]-1}:0]),
++        .masters_req_o(gr_heep_master_req_o[${gr_heep["xbar_nmasters"]-1}:0])
++    );
+   % endif
+ 
+ endmodule

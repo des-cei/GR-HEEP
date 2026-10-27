@@ -41,6 +41,12 @@ FLASH_BIN            = $(shell ls $(GENESYS2_VIVADO_DIR)/*_flash.bin 2>/dev/null
 OPENFPGALOADER      ?= openFPGALoader
 OPENFPGALOADER_FLAGS ?= --verify
 
+# VPU configuration (VPU_N_IPU also sets the number of external xbar masters in mcu-gen)
+VPU_DIR		:= $(ROOT_DIR)/hw/vendor/vermu
+VPU_VLEN	?= 128
+VPU_N_IPU	?= 4
+export VPU_VLEN VPU_N_IPU
+
 # X-HEEP mcu-gen configuration
 X_HEEP_CFG  		?= $(ROOT_DIR)/config/mcu-gen-config.py
 PADS_CFG_ASIC		?= $(ROOT_DIR)/config/gr-heep_pad_cfg.py
@@ -126,6 +132,8 @@ app: gen-app-data
 ## Generate X-HEEP MCU files
 .PHONY: mcu-gen
 mcu-gen: | $(BUILD_DIR)/
+	@echo "### Generating VPU package (VPU_VLEN=$(VPU_VLEN), VPU_N_IPU=$(VPU_N_IPU))..."
+	$(MAKE) -C $(VPU_DIR) generate-vpu-pkg VPU_VLEN=$(VPU_VLEN) VPU_N_IPU=$(VPU_N_IPU)
 	@echo "### Building X-HEEP MCU for '$(TARGET)'..."
 	$(MAKE) -f $(XHEEP_MAKE) mcu-gen \
 		X_HEEP_CFG=$(X_HEEP_CFG) \
@@ -134,8 +142,8 @@ mcu-gen: | $(BUILD_DIR)/
 		EXTERNAL_MCU_GEN_TEMPLATES="$(EXTERNAL_MCU_GEN_TEMPLATES)"
 	$(MAKE) verible
 	@echo "✅ DONE! X-HEEP MCU and GR-HEEP generated successfully"
-	$(MAKE) -C hw/vendor/strela-v1 cgra-gen
-	$(MAKE) -C hw/vendor/strela-v2 cgra-gen
+# 	$(MAKE) -C hw/vendor/strela-v1 cgra-gen
+# 	$(MAKE) -C hw/vendor/strela-v2 cgra-gen
 
 ## @section Verilator
 

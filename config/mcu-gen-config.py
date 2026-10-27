@@ -5,6 +5,7 @@
 # Author: David Mallasén
 # Description: X-HEEP and GR-HEEP configuration for mcu-gen.
 
+import os
 import re
 from xheep import XHeep
 from address_map.address_map import AddressMap
@@ -51,35 +52,35 @@ def config():
     system = XHeep(BusType.NtoM)
 
     # Set cv32e40px CPU
-    system.set_cpu(CPU("cv32e40p"))
+    system.set_cpu(CPU("cv32e20"))
 
-    # system.set_xif(
-    #     CvXIf(
-    #         x_num_rs=2,
-    #         x_id_width=4,
-    #         x_mem_width=32,
-    #         x_rfr_width=32,
-    #         x_rfw_width=32,
-    #         x_misa=0x0,
-    #         x_ecs_xs=0x0,
-    #     )
-    # )
+    system.set_xif(
+        CvXIf(
+            x_num_rs=2,
+            x_id_width=4,
+            x_mem_width=32,
+            x_rfr_width=32,
+            x_rfw_width=32,
+            x_misa=0x0,
+            x_ecs_xs=0x0,
+        )
+    )
 
     # Memory subsystem
     # - 2 x 32kiB firmware and data
     # - 2 x 16kiB interleaved banks
     memory_ss = MemorySS()
-    memory_ss.add_ram_banks([64] * 8)
-    memory_ss.add_ram_banks_il(8, 64, "data_interleaved")
+    memory_ss.add_ram_banks([128] * 11)
+    # memory_ss.add_ram_banks_il(8, 64, "data_interleaved")
     # Linker script sections
-    memory_ss.add_linker_section(LinkerSection.by_size("code", 0, 0x00018000))
-    memory_ss.add_linker_section(LinkerSection("data", 0x00018000, None))
-    memory_ss.add_linker_section_for_banks(
-        "data_interleaved",
-        subsections=[LinkerSubsection("xheep_data_interleaved")],
-        interleaved=True,
-        il_group_name="data_interleaved",
-    )
+    memory_ss.add_linker_section(LinkerSection.by_size("code", 0, 0x0000E800))
+    memory_ss.add_linker_section(LinkerSection("data", 0x0000E800, None))
+    # memory_ss.add_linker_section_for_banks(
+    #     "data_interleaved",
+    #     subsections=[LinkerSubsection("xheep_data_interleaved")],
+    #     interleaved=True,
+    #     il_group_name="data_interleaved",
+    # )
     system.set_memory_ss(memory_ss)
 
     # Stack and heap sizes
@@ -129,9 +130,9 @@ def config():
             address=0x00030000,
             length=0x00010000,
             ch_length=0x100,
-            num_channels=4,
-            num_master_ports=2,
-            num_channels_per_master_port=2,
+            num_channels=1,
+            num_master_ports=1,
+            num_channels_per_master_port=1,
             fifo_depth=4,
             addr_mode="yes",
             subaddr_mode="yes",
@@ -227,7 +228,7 @@ def gr_heep_config():
 
     # STRELA v1 owns masters 0-7 (4 ISEs + 4 OSEs), STRELA v2
     # masters 8-15 (4 ISEs + 4 OSEs); see gr_heep_peripherals.sv.tpl.
-    ext_xbar_nmasters = 0  # 16
+    ext_xbar_nmasters = int(os.environ.get("VPU_N_IPU", 4))  # 16
 
     # External slaves memory map
     ext_xbar_slaves = {

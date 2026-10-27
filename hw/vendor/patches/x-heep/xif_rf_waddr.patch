@@ -1,0 +1,111 @@
+diff --git a/hw/vendor/openhwgroup/cv32e20/rtl/cve2_id_stage.sv b/hw/vendor/openhwgroup/cv32e20/rtl/cve2_id_stage.sv
+index 1f39bf1..3d67371 100644
+--- a/hw/vendor/openhwgroup/cv32e20/rtl/cve2_id_stage.sv
++++ b/hw/vendor/openhwgroup/cv32e20/rtl/cve2_id_stage.sv
+@@ -239,6 +239,8 @@ module cve2_id_stage #(
+   logic [31:0] rf_rdata_b_fwd;
+   logic [31:0] rf_rdata_c_fwd;
+ 
++  logic [4:0]   rf_waddr_id;
++
+   // ALU Control
+   alu_op_e     alu_operator;
+   op_a_sel_e   alu_op_a_mux_sel, alu_op_a_mux_sel_dec;
+@@ -291,6 +293,7 @@ module cve2_id_stage #(
+   end
+ 
+   logic coproc_done;
++  logic xif_dispatch;
+ 
+   // CV-X-IF
+   if (XInterface) begin: gen_xif
+@@ -348,9 +351,11 @@ module cve2_id_stage #(
+     end
+ 
+     assign multicycle_done = lsu_req_dec ? lsu_resp_valid_i : (illegal_insn_dec ? coproc_done : ex_valid_i);
++    assign xif_dispatch    = illegal_insn_dec | illegal_csr_insn_i;
+ 
+     // Issue Interface
+-    assign x_issue_valid_o      = instr_executing & illegal_insn_dec & (id_fsm_q == FIRST_CYCLE) & scoreboard_free;
++    // assign x_issue_valid_o      = instr_executing & illegal_insn_dec & (id_fsm_q == FIRST_CYCLE) & scoreboard_free;
++    assign x_issue_valid_o      = instr_executing & xif_dispatch & (id_fsm_q == FIRST_CYCLE) & scoreboard_free;
+     assign x_issue_req_o.instr  = instr_rdata_i;
+     assign x_issue_req_o.id     = x_instr_id_q;
+     assign x_issue_req_o.hartid = hart_id_i;
+@@ -370,7 +375,8 @@ module cve2_id_stage #(
+     // Result Interface
+     assign x_result_ready_o = 1'b1;
+ 
+-    assign illegal_insn_o = instr_valid_i & (illegal_csr_insn_i | (x_issue_valid_o & x_issue_ready_i & ~x_issue_resp_i.accept));
++    // assign illegal_insn_o = instr_valid_i & (illegal_csr_insn_i | (x_issue_valid_o & x_issue_ready_i & ~x_issue_resp_i.accept));
++    assign illegal_insn_o = instr_valid_i & (x_issue_valid_o & x_issue_ready_i & ~x_issue_resp_i.accept);
+   end
+ 
+   else begin: no_gen_xif
+@@ -484,8 +490,9 @@ module cve2_id_stage #(
+   ///////////////////////
+ 
+   // Suppress register write if there is an illegal CSR access or instruction is not executing
+-  assign rf_we_id_o = rf_we_raw & instr_executing & ~illegal_csr_insn_i;
+-
++  // assign rf_we_id_o = rf_we_raw & instr_executing & ~illegal_csr_insn_i;
++  assign rf_we_id_o = rf_we_raw & instr_executing; 
++  
+   // Register file write data mux
+   always_comb begin : rf_wdata_id_mux
+     unique case ($bits(rf_wd_sel_e)'({rf_wdata_sel}))
+@@ -496,6 +503,16 @@ module cve2_id_stage #(
+     endcase
+   end
+ 
++  // Register file write address mux
++  always_comb begin : rf_waddr_id_mux
++    unique case ($bits(rf_wd_sel_e)'({rf_wdata_sel}))
++      RF_WD_EX,
++      RF_WD_CSR:    rf_waddr_id_o  = rf_waddr_id;
++      RF_WD_COPROC: rf_waddr_id_o  = XInterface? x_result_i.rd : rf_waddr_id;
++      default:      rf_waddr_id_o  = rf_waddr_id;
++    endcase
++  end
++
+   /////////////
+   // Decoder //
+   /////////////
+@@ -542,7 +559,7 @@ module cve2_id_stage #(
+     .rf_raddr_a_o(rf_raddr_a_o),
+     .rf_raddr_b_o(rf_raddr_b_o),
+     .rf_raddr_c_o(rf_raddr_c_o),
+-    .rf_waddr_o  (rf_waddr_id_o),
++    .rf_waddr_o  (rf_waddr_id),
+     .rf_ren_a_o  (rf_ren_a_dec),
+     .rf_ren_b_o  (rf_ren_b_dec),
+     .rf_ren_c_o  (rf_ren_c_dec),
+@@ -831,7 +848,7 @@ module cve2_id_stage #(
+               id_fsm_d      = MULTI_CYCLE;
+               rf_we_raw     = 1'b0;
+             end
+-            illegal_insn_dec: begin
++            xif_dispatch: begin
+ 
+               // CV-X-IF
+               if(XInterface) begin
+@@ -866,8 +883,8 @@ module cve2_id_stage #(
+           if(multdiv_en_dec) begin
+             rf_we_raw       = rf_we_dec & ex_valid_i;
+           end
+-          if (illegal_insn_dec && XInterface) begin
+-            coproc_done     = x_result_valid_i;
++          if (xif_dispatch && XInterface) begin
++            coproc_done     = x_result_valid_i & x_result_i.we;
+             rf_we_raw       = x_result_valid_i & x_result_i.we;
+           end
+           if (multicycle_done) begin
+@@ -876,7 +893,7 @@ module cve2_id_stage #(
+             stall_multdiv   = multdiv_en_dec;
+             stall_branch    = branch_in_dec;
+             stall_jump      = jump_in_dec;
+-            stall_coproc    = XInterface & illegal_insn_dec;
++            stall_coproc    = XInterface & xif_dispatch;
+           end
+         end
+ 
